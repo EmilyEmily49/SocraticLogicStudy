@@ -23,16 +23,17 @@
   };
 
   // ---------- activities ----------
+  const DECK_GLYPH = { fallacies: "✗", termtypes: "≈", predicables: "γ", defflaws: "≝", translate: "→", argkind: "⇵", findconc: "⊢", mill: "∝", dilemma: "Ψ" };
   const GEN = [
-    { id: "propType", name: "Proposition Sorter", icon: "🅰️", units: [5], desc: "Classify A/E/I/O and spot distributed terms.", gen: window.LOGIC.genPropType },
-    { id: "square", name: "Square of Opposition", icon: "⬛", units: [6], desc: "If this is true, what about that?", gen: window.LOGIC.genSquare },
-    { id: "immediate", name: "Conversion, Obversion, Contraposition", icon: "🔄", units: [6], desc: "Find the valid immediate inference.", gen: window.LOGIC.genImmediate },
-    { id: "syllogism", name: "Syllogism Judge", icon: "⚖️", units: [8], desc: "Valid? Which rule is broken? Mood & figure?", gen: window.LOGIC.genSyllogism },
-    { id: "argform", name: "Argument Forms", icon: "🔗", units: [9], desc: "Modus ponens, tollens, and their fallacies.", gen: window.LOGIC.genArgForm },
+    { id: "propType", name: "Proposition Sorter", icon: "A", units: [5], desc: "Classify A/E/I/O and spot distributed terms.", gen: window.LOGIC.genPropType },
+    { id: "square", name: "Square of Opposition", icon: "□", units: [6], desc: "If this is true, what about that?", gen: window.LOGIC.genSquare },
+    { id: "immediate", name: "Conversion, Obversion, Contraposition", icon: "↻", units: [6], desc: "Find the valid immediate inference.", gen: window.LOGIC.genImmediate },
+    { id: "syllogism", name: "Syllogism Judge", icon: "∴", units: [8], desc: "Valid? Which rule is broken? Mood & figure?", gen: window.LOGIC.genSyllogism },
+    { id: "argform", name: "Argument Forms", icon: "⊃", units: [9], desc: "Modus ponens, tollens, and their fallacies.", gen: window.LOGIC.genArgForm },
   ];
   for (const d of DECKS) {
     GEN.push({
-      id: d.id, name: d.name, icon: d.icon, units: [d.unit], desc: d.desc,
+      id: d.id, name: d.name, icon: DECK_GLYPH[d.id] || "·", units: [d.unit], desc: d.desc,
       gen: () => {
         const it = pick(d.items);
         const opts = it.opts || shuffle([it.a, ...shuffle(d.pool.filter((o) => o !== it.a)).slice(0, Math.min(5, d.pool.length - 1))]);
@@ -67,27 +68,33 @@
       const acc = st && st.r + st.w ? Math.round((100 * st.r) / (st.r + st.w)) + "%" : "—";
       const on = state.units.includes(u.id);
       return `<button class="unit ${on ? "on" : ""}" data-unit="${u.id}">
-        <span class="check">${on ? "✓" : ""}</span>
+        <span class="check">${on ? "✓" : ""}</span>${CAST.portrait(CAST.guideFor(u.id), "neutral", 36)}
         <span class="utext"><span class="utitle">${u.id}. ${esc(u.title)}</span>
-        <span class="umeta">${mastered}/${ts.length} cards mastered · accuracy ${acc}</span>
+        <span class="umeta">Guide: ${esc(CAST.CAST[CAST.guideFor(u.id)].name)} · ${mastered}/${ts.length} mastered · ${acc}</span>
         <span class="bar"><span style="width:${ts.length ? (100 * mastered) / ts.length : 0}%"></span></span></span>
       </button>`;
     };
     $app.innerHTML = `
-      <header class="top"><div class="hero">${FUN.socrates("happy", 96)}<div class="bubble">${FUN.quip("hello")}</div></div>
-        <h1>Socratic Logic <span class="wiggle">Study</span>!</h1><p class="sub">Pick your chapters, then pick your game. 🎲</p></header>
+      <header class="top">
+        <p class="eyebrow">A companion to Kreeft's <i>Socratic Logic</i></p>
+        <h1>Socratic Logic Study</h1>
+        <div class="host">${CAST.portrait("kreeft", "pleased", 64)}<div><div class="who">Peter Kreeft <span>· your host</span></div><div class="said">${esc(CAST.line("kreeft", "hello"))}</div></div></div>
+        ${quoteCard()}
+      </header>
+      <h2 class="section">Your guides</h2>
+      <div class="cast-strip">${Object.keys(CAST.CAST).map((id) => `<button data-cast="${id}">${CAST.portrait(id, "neutral", 60)}${esc(CAST.CAST[id].name)}</button>`).join("")}</div>
       <section class="card">
-        <div class="row"><h2>📚 Chapters</h2><span class="links"><a data-all>All</a> · <a data-none>None</a></span></div>
+        <div class="row"><h2>Chapters</h2><span class="links"><a data-all>All</a> · <a data-none>None</a></span></div>
         <div class="units">${UNITS.map(unitRow).join("")}</div>
       </section>
-      <h2 class="section">🧠 Memorize</h2>
+      <h2 class="section">Memorize</h2>
       <div class="grid">
         ${tile("flash", "🃏", "Flashcards", `${terms.length} cards · spaced repetition`, terms.length)}
         ${tile("quiz", "❓", "Term Quiz", "Multiple choice, both directions", terms.length >= 4)}
         ${tile("match", "🧩", "Matching", "Pair terms with definitions", terms.length >= 4)}
         ${tile("challenge", "🏆", "Chapter Challenge", "15 mixed questions", terms.length >= 4 || gens.length)}
       </div>
-      <h2 class="section">🤸 Practice the concepts</h2>
+      <h2 class="section">Practice the concepts</h2>
       <div class="grid">${GEN.map((g) => tile("gen:" + g.id, g.icon, g.name, `Ch. ${g.units.join(", ")} · ${g.desc}`, g.units.some((u) => state.units.includes(u)))).join("")}</div>
       <p class="foot">Progress is saved on this device. <a data-reset>Reset progress</a></p>`;
     $app.querySelectorAll("[data-unit]").forEach((b) => b.onclick = () => {
@@ -101,6 +108,23 @@
       if (confirm("Erase all saved progress?")) { state.cards = {}; state.stats = {}; state.best = {}; save(); home(); }
     };
     $app.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => go(b.dataset.go));
+    $app.querySelectorAll("[data-cast]").forEach((b) => b.onclick = () => castPage(b.dataset.cast));
+  }
+  function castPage(id) {
+    window.scrollTo(0, 0);
+    const c = CAST.CAST[id];
+    const chapters = UNITS.filter((u) => CAST.guideFor(u.id) === id);
+    $app.innerHTML = header(c.name) + `<div class="bio">
+      ${CAST.portrait(id, "pleased", 140)}
+      <p class="who">${esc(c.name)}</p><p class="role">${esc(c.role)} · ${esc(c.era)}</p>
+      ${chapters.length ? `<p class="small">Guides: ${chapters.map((u) => esc(u.short)).join(", ")}</p>` : ""}
+      ${c.quotes.map((q) => quoteCard({ id, ...q })).join("")}
+      ${id === "kreeft" ? `<p class="small" style="margin-top:16px">Author of <i>Socratic Logic</i> and longtime professor of philosophy at Boston College.</p>` : ""}
+    </div>`;
+    bindBack();
+  }
+  function quoteCard(q = CAST.quoteAnyone()) {
+    return `<figure class="quote">${CAST.portrait(q.id, "neutral", 40)}<div><blockquote>“${esc(q.text)}”</blockquote><figcaption>— ${esc(CAST.CAST[q.id].name)}, <i>${esc(q.src)}</i></figcaption></div></figure>`;
   }
   function tile(go, icon, name, desc, enabled) {
     return `<button class="tile" data-go="${go}" ${enabled ? "" : "disabled"}><span class="icon">${icon}</span><span class="tname">${esc(name)}</span><span class="tdesc">${esc(desc)}</span></button>`;
@@ -119,12 +143,12 @@
 
   // ---------- quiz runner ----------
   function runQuiz(title, gen, total, key) {
-    let n = 0, score = 0, streak = 0;
+    let n = 0, score = 0, streak = 0, lastUnit = 1;
     const next = () => {
       if (n >= total) return finish();
       n++;
       const q = gen();
-      $app.innerHTML = header(title, `${n}/${total} · 🔥${streak}`) + `
+      $app.innerHTML = header(title, `${n}/${total}${streak > 1 ? ` · ${streak} in a row` : ""}`) + `
         <div class="qwrap">
           <p class="prompt">${q.prompt}</p>
           ${q.body ? `<div class="qbody">${q.body}</div>` : ""}
@@ -145,22 +169,26 @@
         if (!ok) b.classList.add("wrong");
         const fb = $app.querySelector(".feedback");
         fb.hidden = false;
-        if (ok) FUN.confetti(18); else $app.querySelector(".qwrap").classList.add("shake");
-        fb.innerHTML = `<div class="fb-head">${FUN.socrates(ok ? "wow" : "sad", 64)}<div class="bubble small-b ${ok ? "good" : "bad"}">${FUN.quip(ok ? "right" : "wrong")}</div></div><p>${q.why || ""}</p><button class="primary" data-next>${n >= total ? "See results" : "Next ›"}</button>`;
+        lastUnit = q.unit;
+        const gid = CAST.guideFor(q.unit);
+        fb.className = "feedback " + (ok ? "is-good" : "is-bad");
+        fb.innerHTML = `<div class="fb-head">${CAST.portrait(gid, ok ? "pleased" : "concerned", 52)}<div><div class="verdict ${ok ? "good" : "bad"}">${ok ? "Correct" : "Not quite"}</div><div class="said"><b>${esc(CAST.CAST[gid].name)}:</b> ${esc(CAST.line(gid, ok ? "right" : "wrong"))}</div></div></div><p>${q.why || ""}</p><button class="primary" data-next>${n >= total ? "See results" : "Next ›"}</button>`;
         fb.querySelector("[data-next]").onclick = next;
         fb.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
     };
     const finish = () => {
       const pct = Math.round((100 * score) / total);
-      if (pct >= 60) setTimeout(() => FUN.confetti(pct >= 90 ? 60 : 30), 150);
+      if (pct >= 90) setTimeout(() => CAST.flourish(), 150);
+      const gid = CAST.guideFor(lastUnit);
       const prev = state.best[key] || 0;
       if (pct > prev) { state.best[key] = pct; save(); }
       $app.innerHTML = header(title) + `<div class="done">
-        ${FUN.socrates(pct >= 70 ? "happy" : pct >= 40 ? "think" : "sad", 140)}
-        <div class="bubble">${FUN.quip(pct >= 90 ? "great" : pct >= 60 ? "ok" : "low")}</div>
-        <div class="big">${pct}%</div><p>${score} of ${total} correct${pct > prev && prev ? " — new best! 🏅" : ""}</p>
+        ${CAST.portrait(gid, pct >= 60 ? "pleased" : "concerned", 110)}
+        <p class="who">${esc(CAST.CAST[gid].name)}</p>
+        <div class="big">${pct}%</div><p>${score} of ${total} correct${pct > prev && prev ? " — a new best" : ""}</p>
         <p class="small">Best: ${Math.max(pct, prev)}%</p>
+        ${quoteCard(CAST.CAST[gid].quotes.length ? { id: gid, ...CAST.quote(gid) } : undefined)}
         <button class="primary" data-again>Play again</button></div>`;
       bindBack();
       $app.querySelector("[data-again]").onclick = () => runQuiz(title, gen, total, key);
@@ -186,7 +214,7 @@
     let reverse = state.reverse || false;
     let done = 0;
     if (!queue.length) {
-      $app.innerHTML = header("Flashcards") + `<div class="done">${FUN.socrates("think", 130)}<div class="bubble">All caught up! Even I need a nap sometimes. 😴</div><p>Nothing due right now in these chapters.</p>
+      $app.innerHTML = header("Flashcards") + `<div class="done">${CAST.portrait("kreeft", "pleased", 110)}<p class="who">All caught up</p><p>Nothing is due right now in these chapters.</p>
         <button class="primary" data-cram>Review all anyway</button></div>`;
       bindBack();
       $app.querySelector("[data-cram]").onclick = () => { queue = shuffle(pool).slice(0, 20); show(); };
@@ -194,7 +222,7 @@
     }
     function show() {
       if (!queue.length) {
-        $app.innerHTML = header("Flashcards") + `<div class="done">${FUN.socrates("happy", 140)}<div class="bubble">${FUN.quip("great")}</div><p>Session complete — ${done} cards reviewed. 🎉</p><button class="primary" data-again>Keep going</button></div>`;
+        $app.innerHTML = header("Flashcards") + `<div class="done">${CAST.portrait("kreeft", "pleased", 110)}<p class="who">Session complete</p><p>${done} cards reviewed.</p>${quoteCard()}<button class="primary" data-again>Keep going</button></div>`;
         bindBack();
         $app.querySelector("[data-again]").onclick = flashcards;
         return;
@@ -205,9 +233,9 @@
       const back = reverse ? `<b>${esc(t.term)}</b>` : esc(t.def);
       $app.innerHTML = header("Flashcards", `${queue.length} left`) + `
         <div class="fc-tools"><button class="chip" data-flip-mode>${reverse ? "Definition → Term" : "Term → Definition"} ⇄</button><span class="small">Ch. ${t.unit} · box ${box}/6</span></div>
-        <div class="flash" data-flip><div class="face f-front">${front}<span class="hint">👆 Tap to flip!</span></div><div class="face f-back">${back}</div></div>
+        <div class="flash" data-flip><div class="face f-front">${front}<span class="hint">Tap to reveal</span></div><div class="face f-back">${back}</div></div>
         <div class="fc-actions" hidden>
-          <button class="miss" data-r="0">😵 Missed it</button><button class="hit" data-r="1">😎 Knew it</button>
+          <button class="miss" data-r="0">Missed it</button><button class="hit" data-r="1">Knew it</button>
         </div>`;
       bindBack();
       const card = $app.querySelector(".flash");
@@ -217,7 +245,6 @@
         const ok = b.dataset.r === "1";
         const c = (state.cards[t.id] ||= { box: 0, due: 0 });
         queue.shift();
-        if (ok) FUN.confetti(10);
         if (ok) { c.box = Math.min(6, c.box + 1); c.due = Date.now() + INTERVALS[c.box] * DAY; done++; }
         else { c.box = 0; c.due = 0; queue.splice(Math.min(3, queue.length), 0, t); }
         record(t.unit, ok);
@@ -256,10 +283,10 @@
       }
       sel = null;
       if (matched === set.length) {
-        clearInterval(timer); FUN.confetti(40);
+        clearInterval(timer); if (!misses) CAST.flourish(16);
         const secs = Math.round((Date.now() - start) / 1000);
         setTimeout(() => {
-          $app.innerHTML = header("Matching") + `<div class="done">${FUN.socrates("wow", 140)}<div class="bubble">${secs < 30 ? "Speedy as Hermes! ⚡" : "All matched! Well paired."}</div><div class="big">${secs}s</div><p>${misses} miss${misses === 1 ? "" : "es"}</p><button class="primary" data-again>Play again</button></div>`;
+          $app.innerHTML = header("Matching") + `<div class="done">${CAST.portrait("aristotle", "pleased", 110)}<p class="who">All matched</p><div class="big">${secs}s</div><p>${misses} miss${misses === 1 ? "" : "es"}</p><button class="primary" data-again>Play again</button></div>`;
           bindBack(); $app.querySelector("[data-again]").onclick = matching;
         }, 400);
       }

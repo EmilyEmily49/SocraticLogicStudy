@@ -1,6 +1,6 @@
 // Offline cache. Bump VERSION whenever app files change.
-const VERSION = "sls-v3";
-const FILES = ["./", "index.html", "css/styles.css", "js/data.js", "js/logic.js", "js/fun.js", "js/app.js", "manifest.json",
+const VERSION = "sls-v5";
+const FILES = ["./", "index.html", "css/styles.css", "js/data.js", "js/logic.js", "js/cast.js", "js/app.js", "manifest.json",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", (e) => {
