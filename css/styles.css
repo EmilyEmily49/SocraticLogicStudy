@@ -211,3 +211,28 @@ h2 { font-family: var(--serif); font-size: 22px; font-weight: 600; margin: 0; }
 .lname i { color: var(--muted); font-style: normal; font-size: 13px; }
 .lval { font-family: var(--serif); font-size: 19px; font-weight: 600; white-space: nowrap; }
 .lval small { font-family: var(--sans); font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* ---------- silly goose ---------- */
+.goose-banner { position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 120; width: min(92vw, 520px); background: var(--ink); color: var(--bg); border-radius: 14px; padding: 12px 16px; text-align: center; font-size: 15px; box-shadow: 0 10px 30px rgba(0,0,0,.25); animation: drop .35s cubic-bezier(.3,1.4,.6,1); transition: opacity .4s; }
+.goose-banner b { font-family: var(--serif); font-size: 20px; color: var(--gold); margin-right: 4px; }
+.goose-banner span { display: block; font-size: 12.5px; opacity: .75; margin-top: 2px; }
+.goose-banner.won b { color: #9cd38a; }
+.goose-banner.out { opacity: 0; }
+.goose { position: fixed; left: 0; z-index: 119; background: none; border: 0; padding: 0; cursor: pointer; animation: waddle-across 6.5s linear forwards; }
+.goose .goose-svg { display: block; transform-origin: 50% 90%; animation: waddle .32s ease-in-out infinite alternate; filter: drop-shadow(0 4px 4px rgba(0,0,0,.15)); }
+.goose .leg.l1 { animation: step .32s ease-in-out infinite alternate; transform-origin: 52px 92px; }
+.goose .leg.l2 { animation: step .32s ease-in-out infinite alternate-reverse; transform-origin: 66px 92px; }
+.goose .honk { position: absolute; top: -8px; right: -18px; font-family: var(--serif); font-weight: 700; font-size: 15px; color: var(--accent); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1px 7px; animation: honk 1.3s ease-in-out infinite; }
+.goose.caught { animation-play-state: paused; }
+.goose.caught .goose-svg, .goose.caught .leg { animation: none; }
+.goose.caught .goose-svg { animation: spin-out .7s ease-in forwards; }
+.goose.caught .honk { animation: none; }
+.goose.gone { opacity: 0; transition: opacity .3s; }
+.goose.still { left: 50%; transform: translateX(-50%); animation: none; }
+@keyframes waddle-across { from { transform: translateX(-130px); } to { transform: translateX(calc(100vw + 30px)); } }
+@keyframes waddle { from { transform: rotate(-6deg) translateY(0); } to { transform: rotate(6deg) translateY(-3px); } }
+@keyframes step { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
+@keyframes honk { 0%, 60%, 100% { transform: scale(1) rotate(0); } 70% { transform: scale(1.2) rotate(-8deg); } 80% { transform: scale(1.2) rotate(8deg); } }
+@keyframes drop { from { transform: translate(-50%, -140%); } }
+@keyframes spin-out { 0% { transform: scale(1) rotate(0); } 30% { transform: scale(1.25) rotate(-15deg); } 100% { transform: scale(0) rotate(540deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .goose.still { animation: none !important; } }

@@ -17,6 +17,8 @@ A study app for Peter Kreeft's *Socratic Logic* (3rd ed.). It's a web app you ca
 - Argument Forms: modus ponens and tollens, and their fallacies
 - Fallacy Hunter, Definition Doctor, Predicables, Univocal/Equivocal/Analogical, Translate to Logical Form, Deduction or Induction?, Find the Conclusion, Mill's Methods, Answer the Dilemma
 
+**OH NO! There's a silly goose on the loose!** Every so often during a quiz or flashcards, a goose waddles across the screen. Tap it before it escapes for +25 points and the *Silly Goose* and *Goose Wrangler* badges. (Secret: tap the title on the home screen three times to release one just for fun.)
+
 Choose chapters on the home screen. Progress is saved on your device.
 
 ## Put it on your iPhone

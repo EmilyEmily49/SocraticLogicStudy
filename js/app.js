@@ -76,6 +76,11 @@
     fresh.forEach((b, i) => setTimeout(() => toast(`<b>Badge earned</b> · ${esc(b.name)}`), 400 + i * 1200));
     return points;
   }
+  // A caught goose is worth 25 points (when signed in).
+  function catchGoose() {
+    const pts = award(25, { geese: 1 });
+    return pts ? `+${pts} points` : "Honk!";
+  }
   function toast(html) {
     const t = document.createElement("div");
     t.className = "toast"; t.innerHTML = html;
@@ -151,7 +156,7 @@
       <div class="acct-row">${acct}</div>
       <header class="top">
         <p class="eyebrow">A companion to Kreeft's <i>Socratic Logic</i></p>
-        <h1>Socratic Logic Study</h1>
+        <h1 data-title>Socratic Logic Study</h1>
         <div class="host">${CAST.portrait("kreeft", "pleased", 64)}<div><div class="who">Peter Kreeft <span>· your host</span></div><div class="said">${esc(CAST.line("kreeft", "hello"))}</div></div></div>
         ${quoteCard()}
       </header>
@@ -173,6 +178,12 @@ ${community}
       <div class="grid">${GEN.map((g) => tile("gen:" + g.id, g.icon, g.name, `Ch. ${g.units.join(", ")} · ${g.desc}`, g.units.some((u) => state.units.includes(u)))).join("")}</div>
       <p class="foot">Progress is saved on this device${user ? " and synced to your account" : ""}. <a data-reset>Reset progress</a></p>`;
     $app.querySelector("[data-profile]")?.addEventListener("click", profilePage);
+    // Secret: tap the title three times to release a goose (for fun; no points).
+    let taps = 0, tapTimer;
+    $app.querySelector("[data-title]").onclick = () => {
+      clearTimeout(tapTimer); tapTimer = setTimeout(() => (taps = 0), 900);
+      if (++taps >= 3) { taps = 0; GOOSE.loose(() => "Honk honk!"); }
+    };
     $app.querySelector("[data-signin]")?.addEventListener("click", () => authPage("signin"));
     $app.querySelectorAll("[data-unit]").forEach((b) => b.onclick = () => {
       const id = +b.dataset.unit;
@@ -224,10 +235,11 @@ ${community}
 
   // ---------- quiz runner ----------
   function runQuiz(title, gen, total, key) {
-    let n = 0, score = 0, streak = 0, lastUnit = 1;
+    let n = 0, score = 0, streak = 0, lastUnit = 1, gooseSeen = false;
     const next = () => {
       if (n >= total) return finish();
       n++;
+      if (n > 1 && !gooseSeen) gooseSeen = GOOSE.maybe(0.1, catchGoose);
       const q = gen();
       $app.innerHTML = header(title, `${n}/${total}${streak > 1 ? ` · ${streak} in a row` : ""}`) + `
         <div class="qwrap">
@@ -298,7 +310,7 @@ ${community}
     const due = pool.filter((t) => (state.cards[t.id]?.due || 0) <= now);
     let queue = shuffle(due).sort((a, b) => (state.cards[a.id]?.box || 0) - (state.cards[b.id]?.box || 0)).slice(0, 20);
     let reverse = state.reverse || false;
-    let done = 0;
+    let done = 0, gooseSeen = false;
     if (!queue.length) {
       $app.innerHTML = header("Flashcards") + `<div class="done">${CAST.portrait("kreeft", "pleased", 110)}<p class="who">All caught up</p><p>Nothing is due right now in these chapters.</p>
         <button class="primary" data-cram>Review all anyway</button></div>`;
@@ -313,6 +325,7 @@ ${community}
         $app.querySelector("[data-again]").onclick = flashcards;
         return;
       }
+      if (done > 0 && !gooseSeen) gooseSeen = GOOSE.maybe(0.06, catchGoose);
       const t = queue[0];
       const box = state.cards[t.id]?.box || 0;
       const front = reverse ? esc(t.def) : `<b>${esc(t.term)}</b>`;

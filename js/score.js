@@ -26,6 +26,8 @@
     { id: "streak30", name: "Daily Examen", desc: "Study 30 days in a row.", test: (m) => (m.bestStreak || 0) >= 30 },
     { id: "scribe", name: "Diligent Scribe", desc: "Review 100 flashcards you knew.", test: (m) => (m.counts.cards || 0) >= 100 },
     { id: "memoria", name: "Memoria", desc: "Master 25 flashcards.", test: (m) => (m.mastered || 0) >= 25 },
+    { id: "goose", name: "Silly Goose", desc: "Catch a silly goose on the loose.", test: (m) => (m.counts.geese || 0) >= 1 },
+    { id: "wrangler", name: "Goose Wrangler", desc: "Catch 10 silly geese.", test: (m) => (m.counts.geese || 0) >= 10 },
     { id: "quick", name: "Quick Study", desc: "Finish Matching in under 30s with no misses.", test: (m) => (m.counts.fastMatch || 0) >= 1 },
   ];
 
