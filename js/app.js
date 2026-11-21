@@ -22,6 +22,69 @@
     save();
   };
 
+  // ---------- accounts, points & sync ----------
+  const B = window.BACKEND, S = window.SCORE;
+  let user = null, view = "home", pushTimer = null;
+  const masteredCount = () => TERMS.filter((t) => (state.cards[t.id]?.box || 0) >= 3).length;
+  function pushSoon() {
+    if (!user || !state.me) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushNow, 1500);
+  }
+  function pushNow() {
+    clearTimeout(pushTimer);
+    if (!user || !state.me) return;
+    state.me.mastered = masteredCount();
+    B.saveProfile({ ...state.me }).catch((e) => console.warn("sync", e));
+    B.saveProgress({ cards: state.cards, stats: state.stats, best: state.best }).catch((e) => console.warn("sync", e));
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden) pushNow(); });
+
+  async function pullCloud(u) {
+    const [profile, progress] = await Promise.all([B.loadProfile(), B.loadProgress()]);
+    const keepLocal = state.uid === u.uid && state.me && profile && (state.me.points || 0) > (profile.points || 0);
+    state.me = keepLocal ? state.me : profile || S.newMe("Student");
+    state.uid = u.uid;
+    if (progress) {
+      for (const [id, c] of Object.entries(progress.cards || {})) {
+        if (!state.cards[id] || (c.box || 0) > (state.cards[id].box || 0)) state.cards[id] = c;
+      }
+      for (const [u2, st] of Object.entries(progress.stats || {})) {
+        const mine = (state.stats[u2] ||= { r: 0, w: 0 });
+        mine.r = Math.max(mine.r, st.r || 0); mine.w = Math.max(mine.w, st.w || 0);
+      }
+      for (const [k, v] of Object.entries(progress.best || {})) state.best[k] = Math.max(state.best[k] || 0, v);
+    }
+    state.me.mastered = masteredCount();
+    S.checkBadges(state.me);
+    save(); pushSoon();
+  }
+  B.onAuth(async (u) => {
+    user = u;
+    if (u) { try { await pullCloud(u); } catch (e) { console.warn("pull", e); } }
+    else { state.me = null; state.uid = null; save(); }
+    if (view === "home") home();
+    else if (view === "auth" && u) profilePage();
+  });
+
+  // Award points for an activity (only when signed in). Returns points awarded.
+  function award(points, counts = {}) {
+    if (!user || !state.me) return 0;
+    state.me.mastered = masteredCount();
+    const fresh = S.apply(state.me, { points, counts });
+    save(); pushSoon();
+    fresh.forEach((b, i) => setTimeout(() => toast(`<b>Badge earned</b> · ${esc(b.name)}`), 400 + i * 1200));
+    return points;
+  }
+  function toast(html) {
+    const t = document.createElement("div");
+    t.className = "toast"; t.innerHTML = html;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add("out"), 2600);
+    setTimeout(() => t.remove(), 3100);
+  }
+  const monogram = (name, size = 36) => `<span class="mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px">${esc((name || "?").trim().charAt(0).toUpperCase())}</span>`;
+
   // ---------- activities ----------
   const DECK_GLYPH = { fallacies: "✗", termtypes: "≈", predicables: "γ", defflaws: "≝", translate: "→", argkind: "⇵", findconc: "⊢", mill: "∝", dilemma: "Ψ" };
   const GEN = [
@@ -74,13 +137,25 @@
         <span class="bar"><span style="width:${ts.length ? (100 * mastered) / ts.length : 0}%"></span></span></span>
       </button>`;
     };
+    view = "home";
+    const acct = B.mode === "off" ? "" : user && state.me
+      ? `<button class="acct" data-profile>${monogram(state.me.name, 26)}<span>${esc(state.me.name)}</span><b>${(state.me.points || 0).toLocaleString()} pts</b></button>`
+      : `<button class="acct" data-signin>Sign in</button>`;
+    const community = B.mode === "off" ? "" : `
+      <h2 class="section">Compete</h2>
+      <div class="grid">
+        ${tile("leaderboard", "Ⅰ", "Leaderboard", user ? "All-time, this week, and streaks" : "Sign in to see your group", true)}
+        ${tile("profile", user && state.me ? esc(state.me.name.charAt(0).toUpperCase()) : "?", user ? "Your profile" : "Sign in", user ? `${S.liveStreak(state.me || {})}-day streak · ${(state.me?.badges || []).length} badges` : "Earn points, streaks and badges", true)}
+      </div>`;
     $app.innerHTML = `
+      <div class="acct-row">${acct}</div>
       <header class="top">
         <p class="eyebrow">A companion to Kreeft's <i>Socratic Logic</i></p>
         <h1>Socratic Logic Study</h1>
         <div class="host">${CAST.portrait("kreeft", "pleased", 64)}<div><div class="who">Peter Kreeft <span>· your host</span></div><div class="said">${esc(CAST.line("kreeft", "hello"))}</div></div></div>
         ${quoteCard()}
       </header>
+${community}
       <h2 class="section">Your guides</h2>
       <div class="cast-strip">${Object.keys(CAST.CAST).map((id) => `<button data-cast="${id}">${CAST.portrait(id, "neutral", 60)}${esc(CAST.CAST[id].name)}</button>`).join("")}</div>
       <section class="card">
@@ -89,14 +164,16 @@
       </section>
       <h2 class="section">Memorize</h2>
       <div class="grid">
-        ${tile("flash", "🃏", "Flashcards", `${terms.length} cards · spaced repetition`, terms.length)}
-        ${tile("quiz", "❓", "Term Quiz", "Multiple choice, both directions", terms.length >= 4)}
-        ${tile("match", "🧩", "Matching", "Pair terms with definitions", terms.length >= 4)}
-        ${tile("challenge", "🏆", "Chapter Challenge", "15 mixed questions", terms.length >= 4 || gens.length)}
+        ${tile("flash", "⧉", "Flashcards", `${terms.length} cards · spaced repetition`, terms.length)}
+        ${tile("quiz", "?", "Term Quiz", "Multiple choice, both directions", terms.length >= 4)}
+        ${tile("match", "⇄", "Matching", "Pair terms with definitions", terms.length >= 4)}
+        ${tile("challenge", "★", "Chapter Challenge", "15 mixed questions", terms.length >= 4 || gens.length)}
       </div>
       <h2 class="section">Practice the concepts</h2>
       <div class="grid">${GEN.map((g) => tile("gen:" + g.id, g.icon, g.name, `Ch. ${g.units.join(", ")} · ${g.desc}`, g.units.some((u) => state.units.includes(u)))).join("")}</div>
-      <p class="foot">Progress is saved on this device. <a data-reset>Reset progress</a></p>`;
+      <p class="foot">Progress is saved on this device${user ? " and synced to your account" : ""}. <a data-reset>Reset progress</a></p>`;
+    $app.querySelector("[data-profile]")?.addEventListener("click", profilePage);
+    $app.querySelector("[data-signin]")?.addEventListener("click", () => authPage("signin"));
     $app.querySelectorAll("[data-unit]").forEach((b) => b.onclick = () => {
       const id = +b.dataset.unit;
       state.units = state.units.includes(id) ? state.units.filter((x) => x !== id) : [...state.units, id].sort((a, b) => a - b);
@@ -112,6 +189,7 @@
   }
   function castPage(id) {
     window.scrollTo(0, 0);
+    view = "cast";
     const c = CAST.CAST[id];
     const chapters = UNITS.filter((u) => CAST.guideFor(u.id) === id);
     $app.innerHTML = header(c.name) + `<div class="bio">
@@ -131,10 +209,13 @@
   }
   function go(where) {
     window.scrollTo(0, 0);
+    view = where;
     if (where === "flash") return flashcards();
     if (where === "quiz") return runQuiz("Term Quiz", () => termQuestion(selTerms()), 10, "quiz");
     if (where === "match") return matching();
     if (where === "challenge") return challenge();
+    if (where === "leaderboard") return user ? leaderboardPage() : authPage("signin");
+    if (where === "profile") return user ? profilePage() : authPage("signin");
     const g = GEN.find((x) => "gen:" + x.id === where);
     runQuiz(g.name, g.gen, 10, g.id);
   }
@@ -162,6 +243,7 @@
         const ok = q.correct.includes(choice);
         ok ? (score++, streak++) : (streak = 0);
         record(q.unit, ok);
+        const gained = ok ? award(S.answerPoints(streak), { correct: 1, ...(key.includes(":") ? {} : { [key]: 1 }) }) : 0;
         btns.forEach((x) => {
           x.disabled = true;
           if (q.correct.includes(q.options[+x.dataset.i])) x.classList.add("right");
@@ -172,7 +254,7 @@
         lastUnit = q.unit;
         const gid = CAST.guideFor(q.unit);
         fb.className = "feedback " + (ok ? "is-good" : "is-bad");
-        fb.innerHTML = `<div class="fb-head">${CAST.portrait(gid, ok ? "pleased" : "concerned", 52)}<div><div class="verdict ${ok ? "good" : "bad"}">${ok ? "Correct" : "Not quite"}</div><div class="said"><b>${esc(CAST.CAST[gid].name)}:</b> ${esc(CAST.line(gid, ok ? "right" : "wrong"))}</div></div></div><p>${q.why || ""}</p><button class="primary" data-next>${n >= total ? "See results" : "Next ›"}</button>`;
+        fb.innerHTML = `<div class="fb-head">${CAST.portrait(gid, ok ? "pleased" : "concerned", 52)}<div><div class="verdict ${ok ? "good" : "bad"}">${ok ? "Correct" : "Not quite"}${gained ? ` <span class="pts">+${gained}</span>` : ""}</div><div class="said"><b>${esc(CAST.CAST[gid].name)}:</b> ${esc(CAST.line(gid, ok ? "right" : "wrong"))}</div></div></div><p>${q.why || ""}</p><button class="primary" data-next>${n >= total ? "See results" : "Next ›"}</button>`;
         fb.querySelector("[data-next]").onclick = next;
         fb.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
@@ -182,16 +264,20 @@
       if (pct >= 90) setTimeout(() => CAST.flourish(), 150);
       const gid = CAST.guideFor(lastUnit);
       const prev = state.best[key] || 0;
-      if (pct > prev) { state.best[key] = pct; save(); }
+      if (pct > prev) { state.best[key] = pct; save(); pushSoon(); }
+      const bonus = score === total ? award(50, { perfect: 1 }) : 0;
       $app.innerHTML = header(title) + `<div class="done">
         ${CAST.portrait(gid, pct >= 60 ? "pleased" : "concerned", 110)}
         <p class="who">${esc(CAST.CAST[gid].name)}</p>
         <div class="big">${pct}%</div><p>${score} of ${total} correct${pct > prev && prev ? " — a new best" : ""}</p>
         <p class="small">Best: ${Math.max(pct, prev)}%</p>
+        ${bonus ? `<p class="pts-line">Perfect score bonus <span class="pts">+${bonus}</span></p>` : ""}
+        ${B.mode !== "off" && !user ? `<p class="small"><a data-signin2>Sign in</a> to earn points and climb the leaderboard.</p>` : ""}
         ${quoteCard(CAST.CAST[gid].quotes.length ? { id: gid, ...CAST.quote(gid) } : undefined)}
         <button class="primary" data-again>Play again</button></div>`;
       bindBack();
       $app.querySelector("[data-again]").onclick = () => runQuiz(title, gen, total, key);
+      $app.querySelector("[data-signin2]")?.addEventListener("click", () => authPage("signin"));
     };
     next();
   }
@@ -245,10 +331,10 @@
         const ok = b.dataset.r === "1";
         const c = (state.cards[t.id] ||= { box: 0, due: 0 });
         queue.shift();
-        if (ok) { c.box = Math.min(6, c.box + 1); c.due = Date.now() + INTERVALS[c.box] * DAY; done++; }
+        if (ok) { c.box = Math.min(6, c.box + 1); c.due = Date.now() + INTERVALS[c.box] * DAY; done++; award(3, { cards: 1 }); }
         else { c.box = 0; c.due = 0; queue.splice(Math.min(3, queue.length), 0, t); }
         record(t.unit, ok);
-        save(); show();
+        save(); pushSoon(); show();
       });
     }
     show();
@@ -285,14 +371,151 @@
       if (matched === set.length) {
         clearInterval(timer); if (!misses) CAST.flourish(16);
         const secs = Math.round((Date.now() - start) / 1000);
+        const gained = award(misses ? 20 : 40, { matches: 1, ...(!misses && secs < 30 ? { fastMatch: 1 } : {}) });
         setTimeout(() => {
-          $app.innerHTML = header("Matching") + `<div class="done">${CAST.portrait("aristotle", "pleased", 110)}<p class="who">All matched</p><div class="big">${secs}s</div><p>${misses} miss${misses === 1 ? "" : "es"}</p><button class="primary" data-again>Play again</button></div>`;
+          $app.innerHTML = header("Matching") + `<div class="done">${CAST.portrait("aristotle", "pleased", 110)}<p class="who">All matched</p><div class="big">${secs}s</div><p>${misses} miss${misses === 1 ? "" : "es"}</p>${gained ? `<p class="pts-line"><span class="pts">+${gained}</span></p>` : ""}<button class="primary" data-again>Play again</button></div>`;
           bindBack(); $app.querySelector("[data-again]").onclick = matching;
         }, 400);
       }
     });
   }
 
+  // ---------- auth ----------
+  function authPage(mode = "signin") {
+    window.scrollTo(0, 0);
+    view = "auth";
+    const title = { signin: "Sign in", signup: "Create account", reset: "Reset password" }[mode];
+    $app.innerHTML = header(title) + `<form class="form" novalidate>
+      <div class="host">${CAST.portrait("kreeft", "pleased", 56)}<div class="said">${
+        mode === "signup" ? "Join your study group. You'll need the invite code from whoever set up the app."
+        : mode === "reset" ? "Enter your email and we'll send you a link to choose a new password."
+        : "Welcome back. Sign in to earn points and see the leaderboard."}</div></div>
+      ${mode === "signup" ? `<label>Display name<input name="name" maxlength="24" autocomplete="nickname" required placeholder="Shown on the leaderboard"></label>` : ""}
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      ${mode !== "reset" ? `<label>Password<input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" required minlength="6"></label>` : ""}
+      ${mode === "signup" ? `<label>Invite code<input name="code" autocapitalize="characters" autocomplete="off" required></label>` : ""}
+      <p class="err" hidden></p>
+      <button class="primary" type="submit">${title}</button>
+      <p class="alt">${
+        mode === "signin" ? `New here? <a data-mode="signup">Create an account</a> · <a data-mode="reset">Forgot password?</a>`
+        : `<a data-mode="signin">Back to sign in</a>`}</p>
+    </form>`;
+    bindBack();
+    $app.querySelectorAll("[data-mode]").forEach((a) => a.onclick = () => authPage(a.dataset.mode));
+    const form = $app.querySelector("form"), err = $app.querySelector(".err"), btn = form.querySelector("button[type=submit]");
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const f = Object.fromEntries(new FormData(form));
+      err.hidden = true;
+      const bad = (m) => { err.textContent = m; err.hidden = false; };
+      if (mode === "signup" && !f.name.trim()) return bad("Please choose a display name.");
+      if (!f.email.trim()) return bad("Please enter your email.");
+      if (mode !== "reset" && !f.password) return bad("Please enter your password.");
+      if (mode === "signup" && !f.code.trim()) return bad("Please enter the invite code.");
+      btn.disabled = true; btn.textContent = "One moment…";
+      try {
+        if (mode === "signup") await B.signUp({ name: f.name, email: f.email.trim(), password: f.password, code: f.code });
+        else if (mode === "signin") await B.signIn({ email: f.email.trim(), password: f.password });
+        else { await B.resetPassword(f.email.trim()); toast("Check your email for a reset link."); return authPage("signin"); }
+      } catch (ex) {
+        bad(B.message(ex)); btn.disabled = false; btn.textContent = title;
+      }
+    };
+  }
+
+  // ---------- profile ----------
+  function profilePage() {
+    if (!user || !state.me) return authPage("signin");
+    window.scrollTo(0, 0);
+    view = "profile";
+    const me = state.me;
+    me.mastered = masteredCount();
+    const stat = (label, value) => `<div class="stat"><div class="sv">${value}</div><div class="sl">${label}</div></div>`;
+    const chapters = UNITS.map((u) => {
+      const st = state.stats[u.id] || { r: 0, w: 0 };
+      const n = st.r + st.w, pct = n ? Math.round((100 * st.r) / n) : 0;
+      return `<div class="crow"><span class="cname">${u.id}. ${esc(u.short)}</span><span class="bar"><span style="width:${pct}%"></span></span><span class="cpct">${n ? pct + "%" : "—"}</span></div>`;
+    }).join("");
+    $app.innerHTML = header("Your profile") + `
+      <div class="pro-head">${monogram(me.name, 64)}<div>
+        <div class="who">${esc(me.name)}</div><div class="small">${esc(user.email || "")}</div>
+        <a data-rename>Change display name</a></div></div>
+      <div class="stats">
+        ${stat("Total points", (me.points || 0).toLocaleString())}
+        ${stat("This week", S.liveWeek(me).toLocaleString())}
+        ${stat("Day streak", S.liveStreak(me))}
+        ${stat("Best streak", me.bestStreak || 0)}
+        ${stat("Correct answers", (me.counts?.correct || 0).toLocaleString())}
+        ${stat("Cards mastered", `${me.mastered}/${TERMS.length}`)}
+      </div>
+      <h2 class="section">Badges <span class="count">${me.badges.length}/${S.BADGES.length}</span></h2>
+      ${badgeGrid(me.badges)}
+      <h2 class="section">Accuracy by chapter</h2>
+      <div class="chapters">${chapters}</div>
+      <button class="secondary" data-signout>Sign out</button>`;
+    bindBack();
+    $app.querySelector("[data-signout]").onclick = async () => { pushNow(); await B.signOut(); home(); };
+    $app.querySelector("[data-rename]").onclick = () => {
+      const name = (prompt("New display name (max 24 characters):", me.name) || "").trim().slice(0, 24);
+      if (name) { me.name = name; save(); pushNow(); profilePage(); }
+    };
+  }
+  function badgeGrid(earned) {
+    return `<div class="badges">${S.BADGES.map((b) => `<div class="badge ${earned.includes(b.id) ? "on" : ""}">
+      <span class="medal">${earned.includes(b.id) ? "✦" : "·"}</span><b>${esc(b.name)}</b><span>${esc(b.desc)}</span></div>`).join("")}</div>`;
+  }
+
+  // ---------- leaderboard ----------
+  async function leaderboardPage(tab = "all") {
+    window.scrollTo(0, 0);
+    view = "leaderboard";
+    const tabs = [["all", "All-time"], ["week", "This week"], ["streak", "Streak"]];
+    $app.innerHTML = header("Leaderboard") + `
+      <div class="seg">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div>
+      <div class="board"><p class="small center">Loading…</p></div>`;
+    bindBack();
+    $app.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => leaderboardPage(b.dataset.tab));
+    pushNow();
+    let rows;
+    try { rows = await B.profiles(); } catch (e) {
+      $app.querySelector(".board").innerHTML = `<p class="err">${esc(B.message(e))}</p>`; return;
+    }
+    if (view !== "leaderboard") return;
+    const val = (p) => tab === "all" ? p.points || 0 : tab === "week" ? S.liveWeek(p) : S.liveStreak(p);
+    const unit = (v) => (tab === "streak" ? (v === 1 ? "day" : "days") : "pts");
+    rows = rows.map((p) => (p.uid === user.uid ? { ...p, ...state.me } : p)).sort((a, b) => val(b) - val(a) || (b.points || 0) - (a.points || 0));
+    let rank = 0, last = null;
+    $app.querySelector(".board").innerHTML = rows.map((p, i) => {
+      if (val(p) !== last) { rank = i + 1; last = val(p); }
+      return `<button class="lrow ${p.uid === user.uid ? "me" : ""}" data-uid="${esc(p.uid)}">
+        <span class="rank ${rank <= 3 ? "r" + rank : ""}">${rank}</span>${monogram(p.name, 34)}
+        <span class="lname">${esc(p.name)}${p.uid === user.uid ? " <i>(you)</i>" : ""}</span>
+        <span class="lval">${val(p).toLocaleString()} <small>${unit(val(p))}</small></span></button>`;
+    }).join("") || `<p class="small center">No one here yet.</p>`;
+    $app.querySelectorAll("[data-uid]").forEach((b) => b.onclick = () => {
+      const p = rows.find((r) => r.uid === b.dataset.uid);
+      if (p.uid === user.uid) return profilePage();
+      memberPage(p, tab);
+    });
+  }
+  function memberPage(p, tab) {
+    window.scrollTo(0, 0);
+    view = "member";
+    const badges = p.badges || [];
+    $app.innerHTML = header(p.name) + `
+      <div class="pro-head">${monogram(p.name, 64)}<div><div class="who">${esc(p.name)}</div></div></div>
+      <div class="stats">
+        <div class="stat"><div class="sv">${(p.points || 0).toLocaleString()}</div><div class="sl">Total points</div></div>
+        <div class="stat"><div class="sv">${S.liveWeek(p).toLocaleString()}</div><div class="sl">This week</div></div>
+        <div class="stat"><div class="sv">${S.liveStreak(p)}</div><div class="sl">Day streak</div></div>
+      </div>
+      <h2 class="section">Badges <span class="count">${badges.length}/${S.BADGES.length}</span></h2>
+      ${badgeGrid(badges)}`;
+    $app.querySelector("[data-back]").textContent = "‹ Leaderboard";
+    $app.querySelector("[data-back]").onclick = () => leaderboardPage(tab);
+  }
+
   home();
+  B.init();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
