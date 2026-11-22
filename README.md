@@ -1,4 +1,4 @@
-# Socratic Logic Study
+# Socratic Phanatic
 
 A study app for Peter Kreeft's *Socratic Logic* (3rd ed.). It's a web app you can install on an iPhone, and it works offline.
 

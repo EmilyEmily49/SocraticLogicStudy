@@ -1,6 +1,6 @@
 {
-  "name": "Socratic Logic Study",
-  "short_name": "Logic Study",
+  "name": "Socratic Phanatic",
+  "short_name": "Socratic Phanatic",
   "description": "Flashcards, quizzes, and logic games for Kreeft's Socratic Logic.",
   "start_url": "./",
   "scope": "./",
