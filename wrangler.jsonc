@@ -1,0 +1,9 @@
+// Cloudflare config: serve this folder as a static site (no build step needed).
+{
+  "name": "socraticlogicstudy",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "single-page-application"
+  }
+}
