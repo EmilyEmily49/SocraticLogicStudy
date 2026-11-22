@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever app files change.
-const VERSION = "sls-v7";
+const VERSION = "sls-v8";
 const FILES = ["./", "index.html", "css/styles.css", "js/data.js", "js/logic.js", "js/cast.js", "js/score.js", "js/goose.js", "js/firebase-config.js", "js/backend.js", "js/app.js", "manifest.json",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES))); self.skipWaiting(); });

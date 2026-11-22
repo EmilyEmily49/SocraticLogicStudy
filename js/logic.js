@@ -56,7 +56,7 @@
     };
   }
 
-  // ---- Square of opposition (traditional, with existential import) ----
+  // ---- Square of opposition (Ch. VII; the traditional Square, as Kreeft teaches it) ----
   // SQUARE[given][value] -> {A,E,I,O: true|false|null}
   const SQUARE = {
     A: { true: { A: true, E: false, I: true, O: false }, false: { A: false, E: null, I: null, O: true } },
@@ -66,9 +66,9 @@
   };
   const RELATION = (x, y) => {
     const k = [x, y].sort().join("");
-    return { AO: "Contradictories", EI: "Contradictories", AE: "Contraries", IO: "Subcontraries", AI: "Subalterns", EO: "Subalterns" }[k];
+    return { AO: "Contradictories", EI: "Contradictories", AE: "Contraries", IO: "Subcontraries", AI: "Subalternation", EO: "Subalternation" }[k];
   };
-  const tvLabel = (v) => (v === null ? "Undetermined" : v ? "True" : "False");
+  const tvLabel = (v) => (v === null ? "Unknown" : v ? "True" : "False");
 
   function genSquare() {
     const { S, P } = threeTerms();
@@ -78,21 +78,34 @@
     if (Math.random() < 0.25) {
       const rel = RELATION(g, tgt);
       return {
-        unit: 6, prompt: "What is the relationship between these two?",
+        unit: 7, prompt: "What kind of opposition is this?",
         body: `${sentence(g, S, P)}.<br>${sentence(tgt, S, P)}.`,
-        options: ["Contradictories", "Contraries", "Subcontraries", "Subalterns"],
+        options: ["Contradictories", "Contraries", "Subcontraries", "Subalternation"],
         correct: [rel],
-        why: `${g} and ${tgt} are ${rel.toLowerCase()}.`,
+        why: `${g} and ${tgt}: ${rel.toLowerCase()}.`,
+      };
+    }
+    if (Math.random() < 0.3) {
+      // Kreeft's second kind of Square exercise: evaluate a completed inference.
+      const val2 = Math.random() < 0.5;
+      const res2 = SQUARE[g][val2][tgt];
+      const claim = Math.random() < 0.5;
+      const ok = res2 === claim;
+      return {
+        unit: 7, prompt: "Evaluate this inference:",
+        body: `Since it is ${val2 ? "true" : "false"} that “${sentence(g, S, P)},” it must be ${claim ? "true" : "false"} that “${sentence(tgt, S, P)}.”`,
+        options: ["Valid", "Invalid"], correct: [ok ? "Valid" : "Invalid"],
+        why: `${g} and ${tgt}: ${RELATION(g, tgt).toLowerCase()}. Given that, the ${tgt} is ${tvLabel(res2).toLowerCase()}. ${squareTip(g, val2, tgt)}`,
       };
     }
     const val = Math.random() < 0.5;
     const res = SQUARE[g][val][tgt];
     return {
-      unit: 6, prompt: `If it is <b>${val ? "TRUE" : "FALSE"}</b> that “${sentence(g, S, P)},” then…`,
+      unit: 7, prompt: `If it is <b>${val ? "TRUE" : "FALSE"}</b> that “${sentence(g, S, P)},” then…`,
       body: `“${sentence(tgt, S, P)}” is:`,
-      options: ["True", "False", "Undetermined"],
+      options: ["True", "False", "Unknown"],
       correct: [tvLabel(res)],
-      why: `${g} and ${tgt} are ${RELATION(g, tgt).toLowerCase()}. ${squareTip(g, val, tgt)}`,
+      why: `${g} and ${tgt}: ${RELATION(g, tgt).toLowerCase()}. ${squareTip(g, val, tgt)}`,
     };
   }
   function squareTip(g, val, tgt) {
@@ -106,40 +119,41 @@
       : "Falsity flows up from particular to universal; truth does not.";
   }
 
-  // ---- Immediate inference ----
+  // ---- Immediate inference (Ch. VI, Kreeft's tables) ----
+  // Conversion: E→E, I→I, A→I, E→O; an O cannot be converted.
+  // Obversion: A→E, E→A, I→O, O→I.
+  // Full contraposition: A→All non-P is non-S; E→Some non-P is not non-S; O→Some non-P is not non-S; I has none.
   function genImmediate() {
     const { S, P } = threeTerms();
     const t = pick(TYPES);
-    const op = pick(["conversion", "obversion", "contraposition"]);
+    const op = pick(["conversion", "obversion", "obversion", "contraposition"]);
     const non = (x) => `non-${x}`;
     const obv = { A: "E", E: "A", I: "O", O: "I" };
-    let correct, valid = true;
+    const NOT = "It cannot be done";
+    let correct = [];
     if (op === "conversion") {
-      if (t === "A") correct = `Some ${P} are ${S}`;
-      else if (t === "O") { valid = false; }
-      else correct = sentence(t, P, S);
+      correct = { A: [`Some ${P} are ${S}`], E: [sentence("E", P, S), sentence("O", P, S)], I: [sentence("I", P, S)], O: [] }[t];
     } else if (op === "obversion") {
-      correct = sentence(obv[t], S, non(P));
+      correct = [sentence(obv[t], S, non(P))];
     } else {
-      if (t === "A" || t === "O") correct = sentence(t, non(P), non(S));
-      else valid = false;
+      correct = { A: [sentence("A", non(P), non(S))], E: [sentence("O", non(P), non(S))], I: [], O: [sentence("O", non(P), non(S))] }[t];
     }
-    const cand = new Set([
-      sentence(t, P, S), sentence(obv[t], S, non(P)), sentence(t, non(P), non(S)),
-      sentence(obv[t], P, S), sentence(t, non(S), non(P)), `Some ${P} are ${S}`,
+    const wrong = new Set([
+      sentence(t, P, S), sentence(obv[t], S, P), sentence(t, non(P), non(S)), sentence(t, non(S), non(P)),
+      sentence(obv[t], P, S), sentence("A", P, S), sentence("O", P, S), sentence(t, S, non(P)),
     ]);
-    const NOT = "No valid inference";
-    if (correct) cand.delete(correct);
-    const options = shuffle([...(valid ? [correct] : []), ...shuffle([...cand]).slice(0, 3), NOT]);
+    correct.forEach((c) => wrong.delete(c));
+    const shown = correct.length ? [pick(correct)] : [];
+    const options = shuffle([...shown, ...shuffle([...wrong]).slice(0, 3), NOT]);
     const why = {
-      conversion: "Conversion swaps S and P: valid for E and I, for A only by limitation, never for O.",
-      obversion: "Obversion changes the quality and negates the predicate; it's valid for all four types.",
-      contraposition: "Contraposition swaps S and P and negates both; it's valid for A and O only.",
+      conversion: "Valid conversions: E→E, I→I, A→I (\"by limitation\"), and E→O. An O cannot be converted, and an A cannot be converted simply: either would distribute in the conclusion a term undistributed in the premise.",
+      obversion: "Obversion: (1) change the quality of the proposition and (2) negate the predicate. A→E, E→A, I→O, O→I.",
+      contraposition: "Contraposition: obvert, convert, obvert. A becomes All non-P is non-S; E and O become Some non-P is not non-S; an I has no contrapositive (you'd have to convert an O).",
     }[op];
     return {
-      unit: 6, prompt: `What is the valid <b>${op}</b> of this proposition?`,
+      unit: 6, prompt: `What is the valid <b>${op === "contraposition" ? "full contrapositive" : op}</b> of this proposition?`,
       body: sentence(t, S, P) + ".",
-      options, correct: [valid ? correct : NOT], why,
+      options, correct: correct.length ? shown : [NOT], why,
     };
   }
 
@@ -152,21 +166,22 @@
   ];
   const FORM_NAMES = {
     "AAA-1": "Barbara", "EAE-1": "Celarent", "AII-1": "Darii", "EIO-1": "Ferio",
-    "EAE-2": "Cesare", "AEE-2": "Camestres", "EIO-2": "Festino", "AOO-2": "Baroco",
-    "AAI-3": "Darapti", "IAI-3": "Disamis", "AII-3": "Datisi", "EAO-3": "Felapton", "OAO-3": "Bocardo", "EIO-3": "Ferison",
+    "EAE-2": "Cesare", "AEE-2": "Camestres", "EIO-2": "Festino", "AOO-2": "Baroko",
+    "AAI-3": "Darapti", "IAI-3": "Disamis", "AII-3": "Datisi", "EAO-3": "Felapton", "OAO-3": "Bokardo", "EIO-3": "Ferison",
     "AAI-4": "Bramantip", "AEE-4": "Camenes", "IAI-4": "Dimaris", "EAO-4": "Fesapo", "EIO-4": "Fresison",
   };
   // positions of terms per figure: [major premise subj, pred], [minor premise subj, pred]
   const FIG = { 1: [["M", "P"], ["S", "M"]], 2: [["P", "M"], ["S", "M"]], 3: [["M", "P"], ["M", "S"]], 4: [["P", "M"], ["M", "S"]] };
 
+  // Aristotle's six rules and two corollaries, as named in Kreeft Ch. XI.
   const RULES = {
-    mid: "Undistributed middle",
-    maj: "Illicit major",
-    min: "Illicit minor",
-    neg2: "Two negative premises",
-    negmis: "Negative / affirmative mismatch",
-    part2: "Two particular premises",
-    partUniv: "Universal conclusion from a particular premise",
+    mid: "Undistributed Middle (Rule 3)",
+    maj: "Illicit Major (Rule 4)",
+    min: "Illicit Minor (Rule 4)",
+    neg2: "Two Negative Premises (Rule 5)",
+    negmis: "Rule 6 (negative premise ⇔ negative conclusion)",
+    part2: "Two particular premises (Corollary 1)",
+    partUniv: "Particular premise, universal conclusion (Corollary 2)",
   };
 
   function checkSyllogism(mood, fig) {
@@ -219,14 +234,14 @@
         opts.add(Math.random() < 0.5 ? `${mood}-${1 + rand(4)}` : `${pick(TYPES)}${pick(TYPES)}${pick(TYPES)}-${fig}`);
       }
       return {
-        unit: 8, prompt: "What are the mood and figure?", body,
+        unit: 11, prompt: "What are the mood and figure?", body,
         options: shuffle([...opts]), correct: [form],
         why: `Mood ${mood} (major premise, minor premise, conclusion); figure ${fig} (${FIG[fig].map((p) => p.join("-")).join(", ")}).${FORM_NAMES[form] ? ` Its traditional name is <b>${FORM_NAMES[form]}</b>.` : ""}<br>${termKey}`,
       };
     }
     const options = ["Valid", RULES.mid, RULES.maj, RULES.min, RULES.neg2, RULES.negmis, RULES.part2];
     return {
-      unit: 8, prompt: "Valid — or which rule does it break?", body, options,
+      unit: 11, prompt: "Valid, or which rule does it break?", body, options,
       correct: viol.length ? viol : ["Valid"],
       why: (viol.length
         ? `Invalid (${form}). Broken rule${viol.length > 1 ? "s" : ""}: ${viol.join("; ")}.`
@@ -244,30 +259,22 @@
     { p: "God exists", np: "God does not exist", q: "the universe has a cause", nq: "the universe has no cause" },
   ];
   const ARG_FORMS = [
-    { name: "Modus ponens (valid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.p)}.`, `∴ ${cap(x.q)}.`] },
-    { name: "Modus tollens (valid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.nq)}.`, `∴ ${cap(x.np)}.`] },
-    { name: "Affirming the consequent (invalid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.q)}.`, `∴ ${cap(x.p)}.`] },
-    { name: "Denying the antecedent (invalid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.np)}.`, `∴ ${cap(x.nq)}.`] },
-    { name: "Disjunctive syllogism (valid)", f: (x) => [`Either ${x.p} or ${x.q}.`, `${cap(x.np)}.`, `∴ ${cap(x.q)}.`] },
-    { name: "Affirming a disjunct (invalid)", f: (x) => [`Either ${x.p} or ${x.q} (or both).`, `${cap(x.p)}.`, `∴ ${cap(x.nq)}.`] },
-    { name: "Conjunctive syllogism (valid)", f: (x) => [`It is not the case that both ${x.p} and ${x.nq}.`, `${cap(x.p)}.`, `∴ ${cap(x.q)}.`] },
+    { name: "Affirming the Antecedent (valid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.p)}.`, `∴ ${cap(x.q)}.`], why: "p ⊃ q; p; ∴ q. One of the two valid forms of the mixed hypothetical syllogism." },
+    { name: "Denying the Consequent (valid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.nq)}.`, `∴ ${cap(x.np)}.`], why: "p ⊃ q; ~q; ∴ ~p. Valid; when q is absurd, this is a reductio ad absurdum." },
+    { name: "Affirming the Consequent (invalid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.q)}.`, `∴ ${cap(x.p)}.`], why: "Invalid: more than one cause can produce the same effect." },
+    { name: "Denying the Antecedent (invalid)", f: (x) => [`If ${x.p}, then ${x.q}.`, `${cap(x.np)}.`, `∴ ${cap(x.nq)}.`], why: "Invalid: q might still be true for another reason." },
+    { name: "Disjunctive: denying an alternative (valid)", f: (x) => [`Either ${x.p} or ${x.q}.`, `${cap(x.np)}.`, `∴ ${cap(x.q)}.`], why: "The negative form of the disjunctive syllogism is valid." },
+    { name: "Disjunctive: affirming an alternative (invalid)", f: (x) => [`Either ${x.p} or ${x.q}.`, `${cap(x.p)}.`, `∴ ${cap(x.nq)}.`], why: "The affirmative form is invalid for a weak disjunction (at least one, maybe both)." },
+    { name: "Conjunctive: affirming one (valid)", f: (x) => [`Not both ${x.p} and ${x.nq}.`, `${cap(x.p)}.`, `∴ ${cap(x.q)}.`], why: "~(p & q); p; ∴ ~q. The valid form of the conjunctive syllogism." },
+    { name: "Conjunctive: denying one (invalid)", f: (x) => [`Not both ${x.p} and ${x.q}.`, `${cap(x.np)}.`, `∴ ${cap(x.q)}.`], why: "~(p & q); ~p; ∴ q is invalid: both could be false." },
   ];
-  const ARG_WHY = {
-    "Modus ponens (valid)": "Affirming the antecedent guarantees the consequent.",
-    "Modus tollens (valid)": "If the consequent is false, the antecedent must be false.",
-    "Affirming the consequent (invalid)": "The consequent could be true for another reason.",
-    "Denying the antecedent (invalid)": "The consequent could still be true for another reason.",
-    "Disjunctive syllogism (valid)": "If one alternative is denied, the other must hold.",
-    "Affirming a disjunct (invalid)": "With an inclusive \"or,\" both could be true.",
-    "Conjunctive syllogism (valid)": "If two can't both be true and one is, the other is false.",
-  };
   function genArgForm() {
     const form = pick(ARG_FORMS);
     const x = pick(PAIRS);
     const others = shuffle(ARG_FORMS.filter((f) => f !== form)).slice(0, 3).map((f) => f.name);
     return {
-      unit: 9, prompt: "Name this argument form.", body: form.f(x).join("<br>"),
-      options: shuffle([form.name, ...others]), correct: [form.name], why: ARG_WHY[form.name],
+      unit: 13, prompt: "Name this compound syllogism.", body: form.f(x).join("<br>"),
+      options: shuffle([form.name, ...others]), correct: [form.name], why: form.why,
     };
   }
 

@@ -15,6 +15,10 @@
   state.cards ||= {};
   state.stats ||= {};
   state.best ||= {};
+  state.read ||= {};
+  // The chapters were reorganized to match the book exactly; start chapter progress fresh once.
+  if (state.bookV !== 1) { state.units = UNITS.map((u) => u.id); state.cards = {}; state.stats = {}; state.best = {}; state.read = {}; state.bookV = 1; }
+  state.units = state.units.filter((id) => UNITS.some((u) => u.id === id));
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
   const record = (unit, ok) => {
     const s = (state.stats[unit] ||= { r: 0, w: 0 });
@@ -91,17 +95,16 @@
   const monogram = (name, size = 36) => `<span class="mono" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px">${esc((name || "?").trim().charAt(0).toUpperCase())}</span>`;
 
   // ---------- activities ----------
-  const DECK_GLYPH = { fallacies: "✗", termtypes: "≈", predicables: "γ", defflaws: "≝", translate: "→", argkind: "⇵", findconc: "⊢", mill: "∝", dilemma: "Ψ" };
   const GEN = [
-    { id: "propType", name: "Proposition Sorter", icon: "A", units: [5], desc: "Classify A/E/I/O and spot distributed terms.", gen: window.LOGIC.genPropType },
-    { id: "square", name: "Square of Opposition", icon: "□", units: [6], desc: "If this is true, what about that?", gen: window.LOGIC.genSquare },
-    { id: "immediate", name: "Conversion, Obversion, Contraposition", icon: "↻", units: [6], desc: "Find the valid immediate inference.", gen: window.LOGIC.genImmediate },
-    { id: "syllogism", name: "Syllogism Judge", icon: "∴", units: [8], desc: "Valid? Which rule is broken? Mood & figure?", gen: window.LOGIC.genSyllogism },
-    { id: "argform", name: "Argument Forms", icon: "⊃", units: [9], desc: "Modus ponens, tollens, and their fallacies.", gen: window.LOGIC.genArgForm },
+    { id: "propType", name: "A, E, I, O & Distribution", icon: "A", units: [5], desc: "Classify propositions and spot distributed terms (V.3, V.7).", gen: window.LOGIC.genPropType },
+    { id: "immediate", name: "Conversion, Obversion, Contraposition", icon: "↻", units: [6], desc: "Apply Kreeft's tables of valid immediate inference.", gen: window.LOGIC.genImmediate },
+    { id: "square", name: "The Square of Opposition", icon: "□", units: [7], desc: "True, false, or unknown? Valid or invalid?", gen: window.LOGIC.genSquare },
+    { id: "syllogism", name: "Syllogism Judge", icon: "∴", units: [11], desc: "Test by Aristotle's six rules; name the mood and figure.", gen: window.LOGIC.genSyllogism },
+    { id: "argform", name: "Compound Syllogisms", icon: "⊃", units: [13], desc: "Hypothetical, disjunctive, and conjunctive forms.", gen: window.LOGIC.genArgForm },
   ];
   for (const d of DECKS) {
     GEN.push({
-      id: d.id, name: d.name, icon: DECK_GLYPH[d.id] || "·", units: [d.unit], desc: d.desc,
+      id: d.id, name: d.name, icon: d.icon || "·", units: [d.unit], desc: d.desc,
       gen: () => {
         const it = pick(d.items);
         const opts = it.opts || shuffle([it.a, ...shuffle(d.pool.filter((o) => o !== it.a)).slice(0, Math.min(5, d.pool.length - 1))]);
@@ -110,8 +113,12 @@
     });
   }
 
-  const selTerms = () => TERMS.filter((t) => state.units.includes(t.unit));
-  const selGens = () => GEN.filter((g) => g.units.some((u) => state.units.includes(u)));
+  // `focus` is set while studying a single chapter from its chapter page.
+  let focus = null;
+  const inScope = (unit) => (focus !== null ? unit === focus : state.units.includes(unit));
+  const selTerms = () => TERMS.filter((t) => inScope(t.unit));
+  const selGens = () => GEN.filter((g) => g.units.some(inScope));
+  const unitLabel = (u) => (u.num === "Intro" ? "Introduction" : `Chapter ${u.num}`);
 
   function termQuestion(pool) {
     const t = pick(pool);
@@ -135,14 +142,15 @@
       const st = state.stats[u.id];
       const acc = st && st.r + st.w ? Math.round((100 * st.r) / (st.r + st.w)) + "%" : "—";
       const on = state.units.includes(u.id);
-      return `<button class="unit ${on ? "on" : ""}" data-unit="${u.id}">
-        <span class="check">${on ? "✓" : ""}</span>${CAST.portrait(CAST.guideFor(u.id), "neutral", 36)}
-        <span class="utext"><span class="utitle">${u.id}. ${esc(u.title)}</span>
-        <span class="umeta">Guide: ${esc(CAST.CAST[CAST.guideFor(u.id)].name)} · ${mastered}/${ts.length} mastered · ${acc}</span>
-        <span class="bar"><span style="width:${ts.length ? (100 * mastered) / ts.length : 0}%"></span></span></span>
-      </button>`;
+      return `<div class="unit ${on ? "on" : ""}">
+        <button class="check" data-unit="${u.id}" aria-label="Include ${esc(unitLabel(u))} in mixed review">${on ? "✓" : ""}</button>
+        <button class="uopen" data-open="${u.id}">${CAST.portrait(CAST.guideFor(u.id), "neutral", 36)}
+        <span class="utext"><span class="unum">${esc(unitLabel(u))}${state.read[u.id] ? ` <i class="readmark">✓ lesson read</i>` : ""}</span><span class="utitle">${esc(u.title)}</span>
+        <span class="umeta">${mastered}/${ts.length} mastered · accuracy ${acc}</span>
+        <span class="bar"><span style="width:${ts.length ? (100 * mastered) / ts.length : 0}%"></span></span></span><span class="chev">›</span></button>
+      </div>`;
     };
-    view = "home";
+    view = "home"; focus = null;
     const acct = B.mode === "off" ? "" : user && state.me
       ? `<button class="acct" data-profile>${monogram(state.me.name, 26)}<span>${esc(state.me.name)}</span><b>${(state.me.points || 0).toLocaleString()} pts</b></button>`
       : `<button class="acct" data-signin>Sign in</button>`;
@@ -165,17 +173,16 @@ ${community}
       <div class="cast-strip">${Object.keys(CAST.CAST).map((id) => `<button data-cast="${id}">${CAST.portrait(id, "neutral", 60)}${esc(CAST.CAST[id].name)}</button>`).join("")}</div>
       <section class="card">
         <div class="row"><h2>Chapters</h2><span class="links"><a data-all>All</a> · <a data-none>None</a></span></div>
-        <div class="units">${UNITS.map(unitRow).join("")}</div>
+        <p class="small hint-row">Tap a chapter to open its mini-lesson and practice. Tick chapters to include them in the mixed review below.</p>
+        ${window.PARTS.map((p) => `<div class="part"><h3 class="partname">${esc(p.name)}</h3><div class="units">${p.units.map((id) => unitRow(UNITS[id])).join("")}</div></div>`).join("")}
       </section>
-      <h2 class="section">Memorize</h2>
+      <h2 class="section">Mixed review <span class="count">${state.units.length} chapter${state.units.length === 1 ? "" : "s"} ticked</span></h2>
       <div class="grid">
         ${tile("flash", "⧉", "Flashcards", `${terms.length} cards · spaced repetition`, terms.length)}
         ${tile("quiz", "?", "Term Quiz", "Multiple choice, both directions", terms.length >= 4)}
         ${tile("match", "⇄", "Matching", "Pair terms with definitions", terms.length >= 4)}
         ${tile("challenge", "★", "Chapter Challenge", "15 mixed questions", terms.length >= 4 || gens.length)}
       </div>
-      <h2 class="section">Practice the concepts</h2>
-      <div class="grid">${GEN.map((g) => tile("gen:" + g.id, g.icon, g.name, `Ch. ${g.units.join(", ")} · ${g.desc}`, g.units.some((u) => state.units.includes(u)))).join("")}</div>
       <p class="foot">Progress is saved on this device${user ? " and synced to your account" : ""}. <a data-reset>Reset progress</a></p>`;
     $app.querySelector("[data-profile]")?.addEventListener("click", profilePage);
     // Secret: tap the title three times to release a goose (for fun; no points).
@@ -190,10 +197,11 @@ ${community}
       state.units = state.units.includes(id) ? state.units.filter((x) => x !== id) : [...state.units, id].sort((a, b) => a - b);
       save(); home();
     });
+    $app.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => chapterPage(+b.dataset.open));
     $app.querySelector("[data-all]").onclick = () => { state.units = UNITS.map((u) => u.id); save(); home(); };
     $app.querySelector("[data-none]").onclick = () => { state.units = []; save(); home(); };
     $app.querySelector("[data-reset]").onclick = () => {
-      if (confirm("Erase all saved progress?")) { state.cards = {}; state.stats = {}; state.best = {}; save(); home(); }
+      if (confirm("Erase all saved progress?")) { state.cards = {}; state.stats = {}; state.best = {}; state.read = {}; save(); home(); }
     };
     $app.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => go(b.dataset.go));
     $app.querySelectorAll("[data-cast]").forEach((b) => b.onclick = () => castPage(b.dataset.cast));
@@ -206,7 +214,7 @@ ${community}
     $app.innerHTML = header(c.name) + `<div class="bio">
       ${CAST.portrait(id, "pleased", 140)}
       <p class="who">${esc(c.name)}</p><p class="role">${esc(c.role)} · ${esc(c.era)}</p>
-      ${chapters.length ? `<p class="small">Guides: ${chapters.map((u) => esc(u.short)).join(", ")}</p>` : ""}
+      ${chapters.length ? `<p class="small">Guides: ${chapters.map((u) => esc(unitLabel(u))).join(", ")}</p>` : ""}
       ${c.quotes.map((q) => quoteCard({ id, ...q })).join("")}
       ${id === "kreeft" ? `<p class="small" style="margin-top:16px">Author of <i>Socratic Logic</i> and longtime professor of philosophy at Boston College.</p>` : ""}
     </div>`;
@@ -230,8 +238,59 @@ ${community}
     const g = GEN.find((x) => "gen:" + x.id === where);
     runQuiz(g.name, g.gen, 10, g.id);
   }
-  const header = (title, extra = "") => `<header class="bar-top"><button class="back" data-back>‹ Home</button><span class="ttl">${esc(title)}</span><span class="extra">${extra}</span></header>`;
-  const bindBack = () => ($app.querySelector("[data-back]").onclick = home);
+  const header = (title, extra = "") => `<header class="bar-top"><button class="back" data-back>‹ ${focus !== null ? "Chapter" : "Home"}</button><span class="ttl">${esc(title)}</span><span class="extra">${extra}</span></header>`;
+  const bindBack = () => ($app.querySelector("[data-back]").onclick = () => (focus !== null ? chapterPage(focus) : home()));
+
+  // ---------- chapter page & mini-lessons ----------
+  function chapterPage(id) {
+    window.scrollTo(0, 0);
+    view = "chapter"; focus = id;
+    const u = UNITS[id], gid = CAST.guideFor(id);
+    const terms = selTerms(), gens = selGens();
+    const lessons = (window.LESSONS[id] || []).length;
+    $app.innerHTML = header(unitLabel(u)) + `
+      <div class="chap-head">${CAST.portrait(gid, "pleased", 64)}<div><p class="eyebrow">${esc(unitLabel(u))}</p><h1 class="chap-title">${esc(u.title)}</h1>
+        <p class="small">Your guide: ${esc(CAST.CAST[gid].name)}</p></div></div>
+      <ol class="sections">${u.sections.map((sec) => {
+        const m = sec.match(/\s\((B|P)\)$/);
+        return `<li>${esc(m ? sec.slice(0, -4) : sec)}${m ? ` <span class="tag ${m[1]}">${m[1] === "B" ? "basic" : "philosophical"}</span>` : ""}</li>`;
+      }).join("")}</ol>
+      ${lessons ? `<button class="primary" data-lesson>${state.read[id] ? "Review" : "Start"} the mini-lesson · ${lessons} card${lessons === 1 ? "" : "s"}</button>` : ""}
+      <h2 class="section">Memorize this chapter</h2>
+      <div class="grid">
+        ${tile("flash", "⧉", "Flashcards", `${terms.length} cards`, terms.length)}
+        ${tile("quiz", "?", "Term Quiz", "Multiple choice", terms.length >= 4)}
+        ${tile("match", "⇄", "Matching", "Terms ↔ definitions", terms.length >= 4)}
+        ${tile("challenge", "★", "Chapter Challenge", "15 mixed questions", terms.length >= 4 || gens.length)}
+      </div>
+      ${gens.length ? `<h2 class="section">Practice from the book</h2><div class="grid">${gens.map((g) => tile("gen:" + g.id, g.icon, g.name, g.desc, true)).join("")}</div>` : ""}`;
+    const back = $app.querySelector("[data-back]");
+    back.textContent = "‹ Home";
+    back.onclick = home;
+    $app.querySelector("[data-lesson]")?.addEventListener("click", () => lessonPage(id, 0));
+    $app.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => go(b.dataset.go));
+  }
+  function lessonPage(id, i) {
+    window.scrollTo(0, 0);
+    view = "lesson"; focus = id;
+    const cards = window.LESSONS[id], c = cards[i], last = i === cards.length - 1;
+    const u = UNITS[id], gid = CAST.guideFor(id);
+    if (last) { state.read[id] = true; save(); }
+    $app.innerHTML = header(`${unitLabel(u)} · Lesson`, `${i + 1}/${cards.length}`) + `
+      <article class="lesson">
+        <p class="eyebrow">${esc(c.s)}</p>
+        <div class="lesson-body">${c.b}</div>
+      </article>
+      <div class="dots">${cards.map((_, k) => `<span class="${k === i ? "on" : ""}"></span>`).join("")}</div>
+      ${last ? `<div class="fb-head lesson-end">${CAST.portrait(gid, "pleased", 52)}<div class="said"><b>${esc(CAST.CAST[gid].name)}:</b> That's the chapter. Now put it into practice.</div></div>` : ""}
+      <div class="lesson-nav">
+        <button class="secondary-btn" data-prev ${i === 0 ? "disabled" : ""}>‹ Back</button>
+        <button class="primary" data-next>${last ? "Practice this chapter" : "Next ›"}</button>
+      </div>`;
+    bindBack();
+    $app.querySelector("[data-prev]").onclick = () => lessonPage(id, i - 1);
+    $app.querySelector("[data-next]").onclick = () => (last ? chapterPage(id) : lessonPage(id, i + 1));
+  }
 
   // ---------- quiz runner ----------
   function runQuiz(title, gen, total, key) {
@@ -298,7 +357,7 @@ ${community}
     const terms = selTerms();
     const gens = selGens();
     const gen = () => (terms.length >= 4 && (!gens.length || Math.random() < 0.4) ? termQuestion(terms) : pick(gens).gen());
-    runQuiz("Chapter Challenge", gen, 15, "challenge:" + state.units.join(","));
+    runQuiz(focus !== null ? `${unitLabel(UNITS[focus])} Challenge` : "Mixed Review", gen, 15, "challenge:" + (focus !== null ? focus : state.units.join(",")));
   }
 
   // ---------- flashcards (Leitner spaced repetition) ----------
@@ -447,7 +506,7 @@ ${community}
     const chapters = UNITS.map((u) => {
       const st = state.stats[u.id] || { r: 0, w: 0 };
       const n = st.r + st.w, pct = n ? Math.round((100 * st.r) / n) : 0;
-      return `<div class="crow"><span class="cname">${u.id}. ${esc(u.short)}</span><span class="bar"><span style="width:${pct}%"></span></span><span class="cpct">${n ? pct + "%" : "—"}</span></div>`;
+      return `<div class="crow"><span class="cname">${u.num === "Intro" ? "Intro" : u.num + "."} ${esc(u.short)}</span><span class="bar"><span style="width:${pct}%"></span></span><span class="cpct">${n ? pct + "%" : "—"}</span></div>`;
     }).join("");
     $app.innerHTML = header("Your profile") + `
       <div class="pro-head">${monogram(me.name, 64)}<div>

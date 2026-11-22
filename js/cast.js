@@ -100,7 +100,8 @@
   };
 
   // Which character guides each chapter.
-  const GUIDES = { 1: "kreeft", 2: "chesterton", 3: "plato", 4: "aristotle", 5: "augustine", 6: "aquinas", 7: "lewis", 8: "aristotle", 9: "aquinas", 10: "kreeft", 11: "socrates" };
+  // Which character guides each chapter of the book (0 = Introduction, then I–XVI).
+  const GUIDES = { 0: "kreeft", 1: "plato", 2: "aristotle", 3: "chesterton", 4: "socrates", 5: "aquinas", 6: "augustine", 7: "lewis", 8: "aquinas", 9: "aristotle", 10: "aristotle", 11: "lewis", 12: "chesterton", 13: "socrates", 14: "augustine", 15: "socrates", 16: "kreeft" };
 
   // ---------- portrait illustration ----------
   // mood: "neutral" | "pleased" | "concerned"
