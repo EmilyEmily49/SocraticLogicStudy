@@ -1,10 +1,22 @@
-// Cloudflare config: serve this folder as a static site (no build step needed).
+// Cloudflare config: the static app plus a small Worker for accounts and scores.
 {
   "name": "socraticlogicstudy",
+  "main": "worker.js",
   "compatibility_date": "2025-01-01",
   "assets": {
     "directory": "./",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // One SQLite-backed Durable Object holds accounts, scores and progress (free plan).
+  "durable_objects": {
+    "bindings": [{ "name": "STORE", "class_name": "Store" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Store"] }],
+  "vars": {
+    // Needed to create an account. Change it here any time (existing accounts keep working).
+    "INVITE_CODE": "SILLYGOOSE"
   },
   // Lets non-production branches deploy as Cloudflare Previews.
   "previews": {}

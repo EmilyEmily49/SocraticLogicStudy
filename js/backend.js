@@ -1,4 +1,5 @@
-// Accounts + cloud data. Three modes:
+// Accounts + cloud data. Four modes:
+//  - "cloud":    accounts on this site's own Cloudflare Worker (worker.js), used automatically when present
 //  - "firebase": real accounts (when js/firebase-config.js has a config)
 //  - "mock":     local fake backend for testing (add ?mock=1 to the URL)
 //  - "off":      no accounts; the app works offline as before
@@ -13,7 +14,8 @@
   const listeners = [];
   const B = {
     mode: "off",
-    user: null, // { uid, email }
+    user: null, // { uid, email }  (email holds the username in "cloud" mode)
+    idLabel: "Email", canReset: true,
     onAuth(fn) { listeners.push(fn); },
   };
   const emit = () => listeners.forEach((fn) => fn(B.user));
@@ -29,6 +31,12 @@
     "auth/network-request-failed": "No connection. Check your internet and try again.",
     "permission-denied": "That invite code isn't right.",
     "bad-code": "That invite code isn't right.",
+    "taken": "That username is taken. Try another, or sign in.",
+    "bad-username": "Usernames can use letters, numbers, dots, dashes and underscores (2–30 characters).",
+    "weak-password": "Please use a password of at least 6 characters.",
+    "bad-name": "Please choose a display name.",
+    "bad-login": "Username or password is incorrect.",
+    "offline": "No connection. Check your internet and try again.",
   };
   B.message = (e) => ERRORS[e && e.code] || (e && e.message) || "Something went wrong.";
 
@@ -68,6 +76,52 @@
     };
     authMod.onAuthStateChanged(auth, (u) => { B.user = u ? { uid: u.uid, email: u.email } : null; emit(); });
     B.mode = "firebase";
+  }
+
+  // ---------------- Cloudflare Worker (this site's own /api) ----------------
+  function initCloud() {
+    const TK = "sls-token";
+    const token = () => { try { return localStorage.getItem(TK); } catch { return null; } };
+    const setToken = (t) => { try { t ? localStorage.setItem(TK, t) : localStorage.removeItem(TK); } catch {} };
+    let me = null; // cached /api/me result
+    async function api(method, path, body) {
+      let r;
+      try {
+        r = await fetch(path, {
+          method, headers: { "content-type": "application/json", ...(token() ? { authorization: "Bearer " + token() } : {}) },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      } catch { throw { code: "offline" }; }
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw { code: data.error || "server", status: r.status };
+      return data;
+    }
+    const start = async ({ token: t, user }) => { setToken(t); me = null; B.user = { uid: user.uid, email: user.username }; emit(); };
+    B.signUp = async ({ name, email, password, code }) => start(await api("POST", "/api/signup", { name, username: email, password, code }));
+    B.signIn = async ({ email, password }) => start(await api("POST", "/api/login", { username: email, password }));
+    B.resetPassword = async () => { throw { message: "Password reset isn't available here. Ask Claude to reset it for you." }; };
+    B.signOut = async () => { await api("POST", "/api/logout").catch(() => {}); setToken(null); me = null; B.user = null; emit(); };
+    const loadMe = async () => (me ||= await api("GET", "/api/me"));
+    B.loadProfile = async () => { const m = await loadMe(); me = null; return m.profile; };
+    B.loadProgress = async () => (await loadMe()).progress;
+    B.saveProfile = (p) => api("PUT", "/api/profile", p);
+    B.saveProgress = (p) => api("PUT", "/api/progress", p);
+    B.profiles = () => api("GET", "/api/profiles");
+    B.mode = "cloud"; B.idLabel = "Username"; B.canReset = false;
+    (async () => {
+      if (token()) {
+        try { const m = await api("GET", "/api/me"); B.user = { uid: m.user.uid, email: m.user.username }; }
+        catch (e) { if (e.status === 401) setToken(null); }
+      }
+      emit();
+    })();
+  }
+  async function hasCloud() {
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 4000);
+      const r = await fetch("/api/ping", { signal: ctl.signal, cache: "no-store" }); clearTimeout(t);
+      return r.ok && (await r.json()).ok === true;
+    } catch { return false; }
   }
 
   // ---------------- Mock (local testing) ----------------
@@ -119,6 +173,7 @@
     try {
       if (mock) initMock();
       else if (window.FIREBASE_CONFIG) await initFirebase(window.FIREBASE_CONFIG);
+      else if (await hasCloud()) initCloud();
       else emit();
     } catch (e) {
       console.warn("Accounts unavailable:", e);

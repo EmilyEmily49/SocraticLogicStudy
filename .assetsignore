@@ -4,3 +4,5 @@ README.md
 firestore.rules
 wrangler.jsonc
 .assetsignore
+worker.js
+.gitignore
