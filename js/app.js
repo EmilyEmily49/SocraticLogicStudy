@@ -1,4 +1,4 @@
-// Socratic Logic Study — app UI
+// Socratic Phanatic — app UI
 (function () {
   const { shuffle, pick } = window.LOGIC;
   const UNITS = window.UNITS;
@@ -164,7 +164,7 @@
       <div class="acct-row">${acct}</div>
       <header class="top">
         <p class="eyebrow">A companion to Kreeft's <i>Socratic Logic</i></p>
-        <h1 data-title>Socratic Logic Study</h1>
+        <h1 data-title>Socratic Phanatic</h1>
         <div class="host">${CAST.portrait("kreeft", "pleased", 64)}<div><div class="who">Peter Kreeft <span>· your host</span></div><div class="said">${esc(CAST.line("kreeft", "hello"))}</div></div></div>
         ${quoteCard()}
       </header>

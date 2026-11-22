@@ -1,4 +1,4 @@
-// Study content for Socratic Logic Study, organized exactly like
+// Study content for Socratic Phanatic, organized exactly like
 // Peter Kreeft, *Socratic Logic* (Edition 3.1): the Introduction and Chapters I–XVI,
 // each with Kreeft's own sections. "(B)" marks his basic sections, "(P)" his philosophical ones.
 // Mini-lessons are summaries in our own words of Kreeft's teaching.
