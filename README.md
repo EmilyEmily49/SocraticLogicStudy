@@ -22,28 +22,16 @@ Progress is saved on your device.
 2. Open the Pages URL in **Safari** on your iPhone.
 3. Tap **Share → Add to Home Screen**.
 
-## Accounts, profiles & leaderboard (optional)
-Without setup, the app works offline with no accounts. To turn on logins and a leaderboard for your study group, use Firebase (free):
+## Accounts & leaderboard
+When the app runs on Cloudflare (see `wrangler.jsonc` and `worker.js`), accounts and scores work automatically. There's nothing to set up: the Worker stores everything in a built-in SQLite Durable Object.
 
-1. **Create a project.** Go to [console.firebase.google.com](https://console.firebase.google.com), click **Create a project**, and name it (e.g. `socratic-logic-study`). Google Analytics is not needed.
-2. **Turn on email logins.** **Build → Authentication → Get started → Email/Password → Enable → Save.**
-3. **Create the database.** **Build → Firestore Database → Create database.** Choose a location near you and start in **production mode**.
-4. **Add the security rules.** In Firestore, open the **Rules** tab, replace everything with the contents of [`firestore.rules`](firestore.rules), and click **Publish**.
-5. **Set your invite code.** In Firestore **Data**, click **+ Start collection**:
-   - Collection ID: `meta`
-   - Document ID: `group`
-   - Field: `inviteCode` · type **string** · value: any code you choose (e.g. `AGORA`)
+- **Sign in → Create an account** with a display name, username, password, and the **invite code** (set in `wrangler.jsonc` → `vars.INVITE_CODE`, currently `SILLYGOOSE`).
+- You stay signed in on that device. Signing in on another device brings your points and flashcard progress with you.
+- The **leaderboard** compares everyone in the group: all-time points, this week (resets Mondays), and current streak.
+- Points: 10 per correct answer (up to +10 more for answers in a row), +50 for a perfect quiz, +3 per flashcard you knew, +20–40 for Matching, and +25 for catching a silly goose.
+- There's no self-service password reset; ask Claude (or edit the database in the Cloudflare dashboard) if someone forgets theirs.
 
-   Only people who know this code can join. You can change it here at any time; people who already joined keep their accounts.
-6. **Allow your site to log in.** **Authentication → Settings → Authorized domains → Add domain:** `emilyemily49.github.io`
-7. **Connect the app.** **Project settings (gear icon) → General → Your apps → Web (`</>`)**, register an app (no hosting needed), and copy the `firebaseConfig` values into [`js/firebase-config.js`](js/firebase-config.js), replacing `null`.
-8. Commit and push. Open the app, then **Sign in → Create an account** with your invite code.
-
-Points: 10 per correct answer (up to +10 more for answers in a row), +50 for a perfect quiz, +3 per flashcard you knew, and +20–40 for finishing Matching. The weekly leaderboard resets every Monday.
-
-Note: on iPhone, the home-screen app stores its login separately from Safari, so sign in once inside the installed app.
-
-To test the account screens without Firebase, open the app with `?mock=1` at the end of the URL (invite code `AGORA`). It uses fake data stored only in that browser.
+Optional alternative: Firebase. If `js/firebase-config.js` has a config, the app uses Firebase instead (see `firestore.rules`). To try the account screens with fake data, add `?mock=1` to the URL (invite code `AGORA`).
 
 ## Editing content
 Everything you study lives in `js/data.js`:

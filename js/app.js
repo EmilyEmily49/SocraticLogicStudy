@@ -463,13 +463,13 @@ ${community}
         : mode === "reset" ? "Enter your email and we'll send you a link to choose a new password."
         : "Welcome back. Sign in to earn points and see the leaderboard."}</div></div>
       ${mode === "signup" ? `<label>Display name<input name="name" maxlength="24" autocomplete="nickname" required placeholder="Shown on the leaderboard"></label>` : ""}
-      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <label>${B.idLabel}<input name="email" type="${B.idLabel === "Email" ? "email" : "text"}" autocapitalize="none" autocorrect="off" autocomplete="${B.idLabel === "Email" ? "email" : "username"}" required></label>
       ${mode !== "reset" ? `<label>Password<input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" required minlength="6"></label>` : ""}
       ${mode === "signup" ? `<label>Invite code<input name="code" autocapitalize="characters" autocomplete="off" required></label>` : ""}
       <p class="err" hidden></p>
       <button class="primary" type="submit">${title}</button>
       <p class="alt">${
-        mode === "signin" ? `New here? <a data-mode="signup">Create an account</a> · <a data-mode="reset">Forgot password?</a>`
+        mode === "signin" ? `New here? <a data-mode="signup">Create an account</a>${B.canReset ? ` · <a data-mode="reset">Forgot password?</a>` : ""}`
         : `<a data-mode="signin">Back to sign in</a>`}</p>
     </form>`;
     bindBack();
@@ -481,7 +481,7 @@ ${community}
       err.hidden = true;
       const bad = (m) => { err.textContent = m; err.hidden = false; };
       if (mode === "signup" && !f.name.trim()) return bad("Please choose a display name.");
-      if (!f.email.trim()) return bad("Please enter your email.");
+      if (!f.email.trim()) return bad(`Please enter your ${B.idLabel.toLowerCase()}.`);
       if (mode !== "reset" && !f.password) return bad("Please enter your password.");
       if (mode === "signup" && !f.code.trim()) return bad("Please enter the invite code.");
       btn.disabled = true; btn.textContent = "One moment…";

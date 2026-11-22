@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever app files change.
-const VERSION = "sls-v8";
+const VERSION = "sls-v9";
 const FILES = ["./", "index.html", "css/styles.css", "js/data.js", "js/logic.js", "js/cast.js", "js/score.js", "js/goose.js", "js/firebase-config.js", "js/backend.js", "js/app.js", "manifest.json",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES))); self.skipWaiting(); });
@@ -11,6 +11,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
+  if (url.origin === location.origin && url.pathname.startsWith("/api/")) return; // never cache account data
   // Only cache the app itself, Google Fonts, and the Firebase SDK files — never live account/database traffic.
   const cacheable = url.origin === location.origin || /(^|\.)(gstatic|googleapis)\.com$/.test(url.hostname) && !/firestore|identitytoolkit|securetoken/.test(url.hostname);
   if (!cacheable) return;
