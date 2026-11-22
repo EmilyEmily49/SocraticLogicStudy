@@ -5,5 +5,7 @@
   "assets": {
     "directory": "./",
     "not_found_handling": "single-page-application"
-  }
+  },
+  // Lets non-production branches deploy as Cloudflare Previews.
+  "previews": {}
 }
