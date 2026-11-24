@@ -16,6 +16,7 @@
   state.stats ||= {};
   state.best ||= {};
   state.read ||= {};
+  state.items ||= {};
   // The chapters were reorganized to match the book exactly; start chapter progress fresh once.
   if (state.bookV !== 1) { state.units = UNITS.map((u) => u.id); state.cards = {}; state.stats = {}; state.best = {}; state.read = {}; state.bookV = 1; }
   state.units = state.units.filter((id) => UNITS.some((u) => u.id === id));
@@ -29,7 +30,18 @@
   // ---------- accounts, points & sync ----------
   const B = window.BACKEND, S = window.SCORE;
   let user = null, view = "home", pushTimer = null;
-  const masteredCount = () => TERMS.filter((t) => (state.cards[t.id]?.box || 0) >= 3).length;
+  // Mastery: a term or practice question is "mastered" after you get it right MASTER times in a row,
+  // in any activity (flashcards, term quiz, matching, practice sets). A miss starts its count over.
+  const MASTER = 2;
+  const termLevel = (t) => state.cards[t.id]?.box || 0;
+  const itemLevel = (k) => state.items[k] || 0;
+  const masteredCount = () => TERMS.filter((t) => termLevel(t) >= MASTER).length;
+  function markTerm(t, ok) {
+    const c = (state.cards[t.id] ||= { box: 0, due: 0 });
+    if (ok) { c.box = Math.min(6, c.box + 1); c.due = Date.now() + [0, 1, 2, 4, 8, 16, 32][c.box] * 864e5; }
+    else { c.box = 0; c.due = 0; }
+  }
+  const markItem = (k, ok) => { state.items[k] = ok ? Math.min(9, itemLevel(k) + 1) : 0; };
   function pushSoon() {
     if (!user || !state.me) return;
     clearTimeout(pushTimer);
@@ -40,7 +52,7 @@
     if (!user || !state.me) return;
     state.me.mastered = masteredCount();
     B.saveProfile({ ...state.me }).catch((e) => console.warn("sync", e));
-    B.saveProgress({ cards: state.cards, stats: state.stats, best: state.best }).catch((e) => console.warn("sync", e));
+    B.saveProgress({ cards: state.cards, stats: state.stats, best: state.best, items: state.items }).catch((e) => console.warn("sync", e));
   }
   document.addEventListener("visibilitychange", () => { if (document.hidden) pushNow(); });
 
@@ -58,6 +70,7 @@
         mine.r = Math.max(mine.r, st.r || 0); mine.w = Math.max(mine.w, st.w || 0);
       }
       for (const [k, v] of Object.entries(progress.best || {})) state.best[k] = Math.max(state.best[k] || 0, v);
+      for (const [k, v] of Object.entries(progress.items || {})) state.items[k] = Math.max(state.items[k] || 0, v);
     }
     state.me.mastered = masteredCount();
     S.checkBadges(state.me);
@@ -102,16 +115,32 @@
     { id: "syllogism", name: "Syllogism Judge", icon: "∴", units: [11], desc: "Test by Aristotle's six rules; name the mood and figure.", gen: window.LOGIC.genSyllogism },
     { id: "argform", name: "Compound Syllogisms", icon: "⊃", units: [13], desc: "Hypothetical, disjunctive, and conjunctive forms.", gen: window.LOGIC.genArgForm },
   ];
+  // A "bag" deals every item once (least-mastered first) before any repeats.
+  function bag(items, level) {
+    let left = [];
+    return () => {
+      if (!left.length) left = shuffle(items).sort((a, b) => level(a) - level(b));
+      return left.shift();
+    };
+  }
+  // Generated games: each round gets a fresh source.
+  for (const g of GEN) g.start = () => g.gen;
   for (const d of DECKS) {
+    const keyed = d.items.map((it, i) => ({ it, key: `${d.id}:${i}` }));
     GEN.push({
-      id: d.id, name: d.name, icon: d.icon || "·", units: [d.unit], desc: d.desc,
-      gen: () => {
-        const it = pick(d.items);
-        const opts = it.opts || shuffle([it.a, ...shuffle(d.pool.filter((o) => o !== it.a)).slice(0, Math.min(5, d.pool.length - 1))]);
-        return { unit: d.unit, prompt: d.desc, body: esc(it.q), options: it.opts ? shuffle(opts) : opts, correct: [it.a], why: esc(it.why) };
+      id: d.id, name: d.name, icon: d.icon || "·", units: [d.unit], desc: d.desc, size: d.items.length,
+      itemKeys: keyed.map((x) => x.key),
+      start: () => {
+        const next = bag(keyed, (x) => itemLevel(x.key));
+        return () => {
+          const { it, key } = next();
+          const opts = it.opts || shuffle([it.a, ...shuffle(d.pool.filter((o) => o !== it.a)).slice(0, Math.min(5, d.pool.length - 1))]);
+          return { unit: d.unit, prompt: d.desc, body: esc(it.q), options: it.opts ? shuffle(opts) : opts, correct: [it.a], why: esc(it.why), itemKey: key };
+        };
       },
     });
   }
+  const termSource = (pool) => { const next = bag(pool, termLevel); return () => termQuestion(next()); };
 
   // `focus` is set while studying a single chapter from its chapter page.
   let focus = null;
@@ -120,16 +149,15 @@
   const selGens = () => GEN.filter((g) => g.units.some(inScope));
   const unitLabel = (u) => (u.num === "Intro" ? "Introduction" : `Chapter ${u.num}`);
 
-  function termQuestion(pool) {
-    const t = pick(pool);
+  function termQuestion(t) {
     const same = TERMS.filter((x) => x !== t && x.unit === t.unit);
     const others = TERMS.filter((x) => x !== t && x.unit !== t.unit);
     const distract = shuffle(same).slice(0, 3);
     while (distract.length < 3) distract.push(pick(others.filter((o) => !distract.includes(o))));
     if (Math.random() < 0.5) {
-      return { unit: t.unit, prompt: "Which term matches this definition?", body: esc(t.def), options: shuffle([t, ...distract].map((x) => x.term)), correct: [t.term], why: `<b>${esc(t.term)}</b>: ${esc(t.def)}` };
+      return { unit: t.unit, term: t, prompt: "Which term matches this definition?", body: esc(t.def), options: shuffle([t, ...distract].map((x) => x.term)), correct: [t.term], why: `<b>${esc(t.term)}</b>: ${esc(t.def)}` };
     }
-    return { unit: t.unit, prompt: "What does this term mean?", body: `<b>${esc(t.term)}</b>`, options: shuffle([t, ...distract].map((x) => x.def)), correct: [t.def], why: `<b>${esc(t.term)}</b>: ${esc(t.def)}`, long: true };
+    return { unit: t.unit, term: t, prompt: "What does this term mean?", body: `<b>${esc(t.term)}</b>`, options: shuffle([t, ...distract].map((x) => x.def)), correct: [t.def], why: `<b>${esc(t.term)}</b>: ${esc(t.def)}`, long: true };
   }
 
   // ---------- views ----------
@@ -138,7 +166,9 @@
     const gens = selGens();
     const unitRow = (u) => {
       const ts = TERMS.filter((t) => t.unit === u.id);
-      const mastered = ts.filter((t) => (state.cards[t.id]?.box || 0) >= 3).length;
+      const keys = GEN.filter((g) => g.itemKeys && g.units.includes(u.id)).flatMap((g) => g.itemKeys);
+      const total = ts.length + keys.length;
+      const mastered = ts.filter((t) => termLevel(t) >= MASTER).length + keys.filter((k) => itemLevel(k) >= MASTER).length;
       const st = state.stats[u.id];
       const acc = st && st.r + st.w ? Math.round((100 * st.r) / (st.r + st.w)) + "%" : "—";
       const on = state.units.includes(u.id);
@@ -146,8 +176,8 @@
         <button class="check" data-unit="${u.id}" aria-label="Include ${esc(unitLabel(u))} in mixed review">${on ? "✓" : ""}</button>
         <button class="uopen" data-open="${u.id}">${CAST.portrait(CAST.guideFor(u.id), "neutral", 36)}
         <span class="utext"><span class="unum">${esc(unitLabel(u))}${state.read[u.id] ? ` <i class="readmark">✓ lesson read</i>` : ""}</span><span class="utitle">${esc(u.title)}</span>
-        <span class="umeta">${mastered}/${ts.length} mastered · accuracy ${acc}</span>
-        <span class="bar"><span style="width:${ts.length ? (100 * mastered) / ts.length : 0}%"></span></span></span><span class="chev">›</span></button>
+        <span class="umeta">${mastered}/${total} mastered · accuracy ${acc}</span>
+        <span class="bar"><span style="width:${total ? (100 * mastered) / total : 0}%"></span></span></span><span class="chev">›</span></button>
       </div>`;
     };
     view = "home"; focus = null;
@@ -201,7 +231,7 @@ ${community}
     $app.querySelector("[data-all]").onclick = () => { state.units = UNITS.map((u) => u.id); save(); home(); };
     $app.querySelector("[data-none]").onclick = () => { state.units = []; save(); home(); };
     $app.querySelector("[data-reset]").onclick = () => {
-      if (confirm("Erase all saved progress?")) { state.cards = {}; state.stats = {}; state.best = {}; state.read = {}; save(); home(); }
+      if (confirm("Erase all saved progress?")) { state.cards = {}; state.stats = {}; state.best = {}; state.read = {}; state.items = {}; save(); home(); }
     };
     $app.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => go(b.dataset.go));
     $app.querySelectorAll("[data-cast]").forEach((b) => b.onclick = () => castPage(b.dataset.cast));
@@ -230,13 +260,13 @@ ${community}
     window.scrollTo(0, 0);
     view = where;
     if (where === "flash") return flashcards();
-    if (where === "quiz") return runQuiz("Term Quiz", () => termQuestion(selTerms()), 10, "quiz");
+    if (where === "quiz") { const pool = selTerms(); return runQuiz("Term Quiz", () => termSource(pool), Math.min(10, pool.length), "quiz"); }
     if (where === "match") return matching();
     if (where === "challenge") return challenge();
     if (where === "leaderboard") return user ? leaderboardPage() : authPage("signin");
     if (where === "profile") return user ? profilePage() : authPage("signin");
     const g = GEN.find((x) => "gen:" + x.id === where);
-    runQuiz(g.name, g.gen, 10, g.id);
+    runQuiz(g.name, g.start, Math.min(10, g.size || 10), g.id);
   }
   const header = (title, extra = "") => `<header class="bar-top"><button class="back" data-back>‹ ${focus !== null ? "Chapter" : "Home"}</button><span class="ttl">${esc(title)}</span><span class="extra">${extra}</span></header>`;
   const bindBack = () => ($app.querySelector("[data-back]").onclick = () => (focus !== null ? chapterPage(focus) : home()));
@@ -256,6 +286,11 @@ ${community}
         return `<li>${esc(m ? sec.slice(0, -4) : sec)}${m ? ` <span class="tag ${m[1]}">${m[1] === "B" ? "basic" : "philosophical"}</span>` : ""}</li>`;
       }).join("")}</ol>
       ${lessons ? `<button class="primary" data-lesson>${state.read[id] ? "Review" : "Start"} the mini-lesson · ${lessons} card${lessons === 1 ? "" : "s"}</button>` : ""}
+      <p class="small mastery-note">${(() => {
+        const keys = gens.filter((g) => g.itemKeys).flatMap((g) => g.itemKeys);
+        const m = terms.filter((t) => termLevel(t) >= MASTER).length + keys.filter((k) => itemLevel(k) >= MASTER).length;
+        return `<b>${m}/${terms.length + keys.length} mastered.</b> A term or practice question counts as mastered once you get it right ${MASTER} times in a row, in any activity.`;
+      })()}</p>
       <h2 class="section">Memorize this chapter</h2>
       <div class="grid">
         ${tile("flash", "⧉", "Flashcards", `${terms.length} cards`, terms.length)}
@@ -293,8 +328,19 @@ ${community}
   }
 
   // ---------- quiz runner ----------
-  function runQuiz(title, gen, total, key) {
+  // makeGen() returns a question source for one round; questions already asked this round are skipped.
+  function runQuiz(title, makeGen, total, key) {
     let n = 0, score = 0, streak = 0, lastUnit = 1, gooseSeen = false;
+    const source = makeGen(), seen = new Set();
+    const gen = () => {
+      let q;
+      for (let tries = 0; tries < 30; tries++) {
+        q = source();
+        const sig = q.prompt + "|" + q.body;
+        if (!seen.has(sig)) { seen.add(sig); break; }
+      }
+      return q;
+    };
     const next = () => {
       if (n >= total) return finish();
       n++;
@@ -314,6 +360,9 @@ ${community}
         const ok = q.correct.includes(choice);
         ok ? (score++, streak++) : (streak = 0);
         record(q.unit, ok);
+        if (q.term) markTerm(q.term, ok);
+        if (q.itemKey) markItem(q.itemKey, ok);
+        save();
         const gained = ok ? award(S.answerPoints(streak), { correct: 1, ...(key.includes(":") ? {} : { [key]: 1 }) }) : 0;
         btns.forEach((x) => {
           x.disabled = true;
@@ -347,7 +396,7 @@ ${community}
         ${quoteCard(CAST.CAST[gid].quotes.length ? { id: gid, ...CAST.quote(gid) } : undefined)}
         <button class="primary" data-again>Play again</button></div>`;
       bindBack();
-      $app.querySelector("[data-again]").onclick = () => runQuiz(title, gen, total, key);
+      $app.querySelector("[data-again]").onclick = () => runQuiz(title, makeGen, total, key);
       $app.querySelector("[data-signin2]")?.addEventListener("click", () => authPage("signin"));
     };
     next();
@@ -356,8 +405,17 @@ ${community}
   function challenge() {
     const terms = selTerms();
     const gens = selGens();
-    const gen = () => (terms.length >= 4 && (!gens.length || Math.random() < 0.4) ? termQuestion(terms) : pick(gens).gen());
-    runQuiz(focus !== null ? `${unitLabel(UNITS[focus])} Challenge` : "Mixed Review", gen, 15, "challenge:" + (focus !== null ? focus : state.units.join(",")));
+    const makeGen = () => {
+      const nextTerm = terms.length >= 4 ? termSource(terms) : null;
+      const sources = new Map();
+      return () => {
+        if (nextTerm && (!gens.length || Math.random() < 0.4)) return nextTerm();
+        const g = pick(gens);
+        if (!sources.has(g.id)) sources.set(g.id, g.start());
+        return sources.get(g.id)();
+      };
+    };
+    runQuiz(focus !== null ? `${unitLabel(UNITS[focus])} Challenge` : "Mixed Review", makeGen, 15, "challenge:" + (focus !== null ? focus : state.units.join(",")));
   }
 
   // ---------- flashcards (Leitner spaced repetition) ----------
@@ -401,10 +459,10 @@ ${community}
       $app.querySelector("[data-flip-mode]").onclick = () => { reverse = !reverse; state.reverse = reverse; save(); show(); };
       $app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => {
         const ok = b.dataset.r === "1";
-        const c = (state.cards[t.id] ||= { box: 0, due: 0 });
         queue.shift();
-        if (ok) { c.box = Math.min(6, c.box + 1); c.due = Date.now() + INTERVALS[c.box] * DAY; done++; award(3, { cards: 1 }); }
-        else { c.box = 0; c.due = 0; queue.splice(Math.min(3, queue.length), 0, t); }
+        markTerm(t, ok);
+        if (ok) { done++; award(3, { cards: 1 }); }
+        else queue.splice(Math.min(3, queue.length), 0, t);
         record(t.unit, ok);
         save(); pushSoon(); show();
       });
@@ -434,7 +492,7 @@ ${community}
       const t = TERMS.find((x) => x.id === b.dataset.id);
       if (sel.dataset.id === b.dataset.id) {
         sel.classList.remove("sel"); sel.classList.add("ok"); b.classList.add("ok");
-        sel.disabled = b.disabled = true; matched++; record(t.unit, true);
+        sel.disabled = b.disabled = true; matched++; record(t.unit, true); markTerm(t, true); save();
       } else {
         misses++; const s = sel; s.classList.add("bad"); b.classList.add("bad");
         setTimeout(() => { s.classList.remove("bad", "sel"); b.classList.remove("bad"); }, 450);

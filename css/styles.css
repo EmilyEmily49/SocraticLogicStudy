@@ -273,3 +273,4 @@ h2 { font-family: var(--serif); font-size: 22px; font-weight: 600; margin: 0; }
 .lesson-nav { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
 .secondary-btn { padding: 14px; background: none; border: 1px solid var(--line); border-radius: 10px; font-weight: 600; }
 .secondary-btn:disabled { opacity: .35; }
+.mastery-note { margin: 14px 0 0; }
